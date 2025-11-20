@@ -102,7 +102,14 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
-
+struct sr_udp_header
+{
+  uint16_t udp_src,
+  uint16_t udp_dst,
+  uint16_t udp_len,
+  uint16_t udp_sum,
+}__attribute__((packed));
+typedef struct sr_udp_hdr sr_udp_hdr_t
 
 /*
  * Structure of an internet header, naked of options.
@@ -148,10 +155,9 @@ struct sr_ethernet_hdr
 } __attribute__ ((packed)) ;
 typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
-
-
 enum sr_ip_protocol {
   ip_protocol_icmp = 0x0001,
+  ip_protocol_udp = 0x0011
 };
 
 enum sr_ethertype {
