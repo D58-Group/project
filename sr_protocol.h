@@ -102,14 +102,14 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
-struct sr_udp_header
+struct sr_udp_hdr
 {
-  uint16_t udp_src,
-  uint16_t udp_dst,
-  uint16_t udp_len,
-  uint16_t udp_sum,
-}__attribute__((packed));
-typedef struct sr_udp_hdr sr_udp_hdr_t
+  uint16_t udp_src;
+  uint16_t udp_dst;
+  uint16_t udp_len;
+  uint16_t udp_sum;
+}__attribute__((packed)) ;
+typedef struct sr_udp_hdr sr_udp_hdr_t;
 
 /*
  * Structure of an internet header, naked of options.
