@@ -1,8 +1,14 @@
 # CSCD58 Final Project: Packet Sniffer
 
+## Compile
+
 ```bash
-$ gcc packet_sniffer.c -o packet_sniffer.out
-$ ./packet_sniffer.out -h
+gcc -o packet_sniffer packet_sniffer.c
+```
+
+## Options
+
+```bash
 Usage: ./packet_sniffer.out -i <interface> [-o <filename>] [-p <protocol>] [-t <duration>] [-h]
   -i <interface>    Interface to sniff on
   -o <filename>     File to save captured packets (default=stdout)
