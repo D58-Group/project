@@ -26,5 +26,5 @@ Usage: ./packet_sniffer.out -i <interface> [-o <filename>] [-p <protocol>] [-t <
 
 ## Resources
 
-<https://www.tcpdump.org/manpages/pcap_findalldevs.3pcap.html>
-<https://www.tcpdump.org/pcap.html>
+- <https://www.tcpdump.org/manpages/pcap_findalldevs.3pcap.html>
+- <https://www.tcpdump.org/pcap.html>
