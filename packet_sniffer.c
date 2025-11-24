@@ -11,43 +11,51 @@ char* usage =
     "  -t <duration>     Duration to sniff in seconds (default=unlimited)\n"
     "  -h                View usage information\n";
 
-int main(int argc, char* argv[]) {
-  char* interface = NULL;
-  char* filename = NULL;
-  char* protocol = NULL;
-  int duration = -1;
+struct options {
+  char* interface;
+  char* filename;
+  char* protocol;
+  int duration;
+} typedef options_t;
 
-  // parse command-line arguments
+int main(int argc, char* argv[]) {
+  // Define default options
+  options_t options;
+  options.interface = NULL;
+  options.filename = NULL;
+  options.protocol = NULL;
+  options.duration = -1;
+
+  // Parse command-line arguments
   for (int i = 1; i < argc; i++) {
-    // usage
-    if (strcmp(argv[i], "-h") == 0) {
+    if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
+      options.interface = argv[++i];
+    } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+      options.filename = argv[++i];
+    } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+      options.protocol = argv[++i];
+    } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
+      options.duration = atoi(argv[++i]);
+    } else if (strcmp(argv[i], "-h") == 0) {
       printf(usage, argv[0]);
       return 0;
-    }
-
-    // flags
-    if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
-      interface = argv[++i];
-    } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-      filename = argv[++i];
-    } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
-      protocol = argv[++i];
-    } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
-      duration = atoi(argv[++i]);
     } else {
-      printf("Unknown argument: %s\n", argv[i]);
+      printf("Unknown option: %s\n", argv[i]);
       printf(usage, argv[0]);
       return 1;
     }
   }
 
-  if (interface == NULL) {
-    printf("Interface is required.\n");
+  if (options.interface == NULL) {
+    printf("Error: Interface is required.\n");
+    printf(usage, argv[0]);
     return 1;
   }
 
-  printf("interface: %s\n", interface);
-  printf("protocol: %s\n", protocol ? protocol : "any");
-  printf("output file: %s\n", filename ? filename : "stdout");
-  printf("duration: %d seconds\n", duration);
+  printf("Sniffing on interface: %s\n", options.interface);
+  printf("Output file: %s\n", options.filename ? options.filename : "stdout");
+  printf("Protocol filter: %s\n", options.protocol ? options.protocol : "any");
+  printf("Duration: %d\n", options.duration);
+
+  return 0;
 }
