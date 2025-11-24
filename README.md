@@ -1,20 +1,15 @@
 # CSCD58 Final Project: Packet Sniffer
 
-## Prerequisites
-
-```bash
-sudo apt-get install libpcap-dev
-```
-
-## Compile
-
-```bash
-gcc -o packet_sniffer packet_sniffer.c sr_utils.c -lpcap
-```
-
 ## Usage
 
 ```bash
+# prerequisites
+sudo apt-get install libpcap-dev
+
+# compile
+make
+
+# run
 sudo ./packet_sniffer -i interface
 ```
 
