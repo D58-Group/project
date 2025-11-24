@@ -18,15 +18,14 @@ struct options {
   int duration;
 } typedef options_t;
 
-int main(int argc, char* argv[]) {
-  // Define default options
+options_t parse_options(int argc, char* argv[]) {
   options_t options;
+  
   options.interface = NULL;
   options.filename = NULL;
   options.protocol = NULL;
   options.duration = -1;
-
-  // Parse command-line arguments
+  
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
       options.interface = argv[++i];
@@ -38,19 +37,25 @@ int main(int argc, char* argv[]) {
       options.duration = atoi(argv[++i]);
     } else if (strcmp(argv[i], "-h") == 0) {
       printf(usage, argv[0]);
-      return 0;
+      exit(0);
     } else {
       printf("Unknown option: %s\n", argv[i]);
       printf(usage, argv[0]);
-      return 1;
+      exit(1);
     }
   }
-
+  
   if (options.interface == NULL) {
     printf("Error: Interface is required.\n");
     printf(usage, argv[0]);
-    return 1;
+    exit(1);
   }
+  
+  return options;
+}
+
+int main(int argc, char* argv[]) {
+  options_t options = parse_options(argc, argv);
 
   printf("Sniffing on interface: %s\n", options.interface);
   printf("Output file: %s\n", options.filename ? options.filename : "stdout");
