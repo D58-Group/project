@@ -58,8 +58,8 @@ options_t parse_options(int argc, char* argv[]) {
   return options;
 }
 
-void handle_packet(u_char* args_unused, const struct pcap_pkthdr* header,
-                   const u_char* packet) {
+void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
+                   const uint8_t* packet) {
   print_hdrs((uint8_t*)packet, header->len);
 }
 
