@@ -58,34 +58,43 @@ options_t parse_options(int argc, char* argv[]) {
   return options;
 }
 
-void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
-                   const uint8_t* packet) {
-  print_hdrs((uint8_t*)packet, header->len);
+
+void handle_packet(u_char *args_unused,
+                   const struct pcap_pkthdr *header,
+                   const u_char *packet) {
+  (void)args_unused; 
+
+  printf("Got packet of length %u\n", header->len);
+  fflush(stdout);
+
+  print_hdrs((uint8_t *)packet, header->len);
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
-  pcap_if_t* device;
-  pcap_t* packet_capture_handle;
+  //   pcap_if_t* device;
+  pcap_t *packet_capture_handle;
   int promisc = 1;  // promiscuous mode
-  int to_ms = 750;  // read time in ms
+  int to_ms = 750;  // read timeout in ms
   // struct pcap_pkthdr hdr;
 
   // Parse command line options
   options_t options = parse_options(argc, argv);
+
   printf("Sniffing on interface: %s\n", options.interface);
   printf("Output file: %s\n", options.filename ? options.filename : "stdout");
   printf("Protocol filter: %s\n", options.protocol ? options.protocol : "any");
   printf("Duration: %d\n", options.duration);
+  fflush(stdout);
 
   // List devices and select first device in list
-  pcap_findalldevs(&device, errbuf);  // TODO free list with pcap_freealldevs
+  // pcap_findalldevs(&device, errbuf);  // TODO free list with pcap_freealldevs
 
-  if (device == NULL) {
-    printf("Error finding devices, %s", errbuf);
-    exit(1);
-  }
-  printf("Capturing packets on device: %s", device->name);
+  // if (device == NULL) {
+  //   printf("Error finding devices, %s", errbuf);
+  //   exit(1);
+  // }
+
 
   // TODO: add option for inputing device name instead of using default
 
@@ -94,17 +103,28 @@ int main(int argc, char* argv[]) {
 
   // TODO: Can filter using pcap_compile and pcap_setfilter
 
-  // Capture packets on device
+
+  printf("Capturing packets on device: %s\n", options.interface);
+  fflush(stdout);
+
   packet_capture_handle =
-      pcap_open_live(device->name, BUFSIZ, promisc, to_ms, errbuf);
+      pcap_open_live(options.interface, BUFSIZ, promisc, to_ms, errbuf);
 
   if (packet_capture_handle == NULL) {
-    printf("Error opening device %s", errbuf);
+    fprintf(stderr, "Error opening device '%s': %s\n",
+            options.interface, errbuf);
+    fflush(stderr);
     exit(1);
   }
 
+  printf("pcap_open_live succeeded, starting capture loop\n");
+  fflush(stdout);
+
   // -1 means to sniff until error occurs
-  pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
+  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
+  printf("pcap_loop returned with code %d\n", rc);
+  fflush(stdout);
+  
 
   // Close session
   pcap_close(packet_capture_handle);
