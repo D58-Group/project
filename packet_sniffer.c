@@ -1,5 +1,5 @@
 #include <errno.h>
-#include <ncurses.h>
+// #include <ncurses.h>
 #include <pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -99,16 +99,16 @@ int get_packet_list_length(int length, packet_node_t *node) {
   return get_packet_list_length(length + 1, node->next);
 }
 
-void print_packet_node(packet_node_t *node) {
-  printw("packet: \n");
-  printw("timestamp: %d\n", node->packet_hdr->ts);
-  printw("packet type: %d\n", ethertype((uint8_t *)(node->packet)));
+// void print_packet_node(packet_node_t *node) {
+//   printw("packet: \n");
+//   printw("timestamp: %d\n", node->packet_hdr->ts);
+//   printw("packet type: %d\n", ethertype((uint8_t *)(node->packet)));
 
-}
+// }
 
 void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
-  packet_node_t *new_node = add_packet_node(packet, header, NULL, packet_list);
+  // packet_node_t *new_node = add_packet_node(packet, header, NULL, packet_list);
 
   printf("Got packet of length %u\n", header->len);
   fflush(stdout);
