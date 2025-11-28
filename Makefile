@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-Wall -g
-# LIBS=-lpcap -lncurses
-LIBS=-lpcap
+# LDFLAGS=-lpcap -lncurses
+LDFLAGS=-lpcap
 
 all: packet_sniffer
 
