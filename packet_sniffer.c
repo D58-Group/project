@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 #include "sr_utils.h"
+#include "sorting.h"
 
 struct packet_node {
   const uint8_t* packet;
@@ -131,6 +133,13 @@ void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
   // packet_node_t* new_node = add_packet_node(packet, header, NULL, packet_list);
 
+  options_t *opts = (options_t *)args_unused;
+
+  /*filtering */
+  if (!match_protocol(packet, header->len, opts->protocol)) {
+      return; 
+  }
+
   printf("Got packet of length %u\n", header->len);
   fflush(stdout);
 
@@ -201,7 +210,7 @@ int main(int argc, char* argv[]) {
   printf("pcap_open_live succeeded, starting capture loop\n");
 
   // -1 means to sniff until error occurs
-  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
+  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (u_char *)&options);
   printf("pcap_loop returned with code %d\n", rc);
 
   // Close session

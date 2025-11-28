@@ -3,19 +3,19 @@ CFLAGS=-Wall -g
 # LIBS=-lpcap -lncurses
 LIBS=-lpcap
 
-TARGET=packet_sniffer
-SRCS=packet_sniffer.c sr_utils.c
-OBJS=$(SRCS:.c=.o)
+all: packet_sniffer
 
-.PHONY: all clean
+packet_sniffer: packet_sniffer.o sr_utils.o sorting.o
+	$(CC) $(CFLAGS) -o packet_sniffer packet_sniffer.o sr_utils.o sorting.o $(LDFLAGS)
 
-all: $(TARGET)
+packet_sniffer.o: packet_sniffer.c sr_utils.h sorting.h
+	$(CC) $(CFLAGS) -c -o packet_sniffer.o packet_sniffer.c
 
-$(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ $(LIBS)
+sr_utils.o: sr_utils.c sr_utils.h sr_protocol.h
+	$(CC) $(CFLAGS) -c -o sr_utils.o sr_utils.c
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+sorting.o: sorting.c sorting.h sr_utils.h sr_protocol.h
+	$(CC) $(CFLAGS) -c -o sorting.o sorting.c
 
 clean:
-	rm -f $(OBJS) $(TARGET)
+	rm -f packet_sniffer packet_sniffer.o sr_utils.o sorting.o
