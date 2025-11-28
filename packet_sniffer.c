@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 #include "sr_utils.h"
+#include "sorting.h"
 
 char* usage =
     "Usage:"
@@ -64,6 +66,13 @@ void handle_packet(u_char *args_unused,
                    const u_char *packet) {
   (void)args_unused; 
 
+  options_t *opts = (options_t *)args_unused;
+
+  /*filtering */
+  if (!match_protocol(packet, header->len, opts->protocol)) {
+      return; 
+  }
+
   printf("Got packet of length %u\n", header->len);
   fflush(stdout);
 
@@ -121,7 +130,7 @@ int main(int argc, char *argv[]) {
   fflush(stdout);
 
   // -1 means to sniff until error occurs
-  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
+  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (u_char *)&options);
   printf("pcap_loop returned with code %d\n", rc);
   fflush(stdout);
   
