@@ -165,10 +165,11 @@ int main(int argc, char* argv[]) {
 
   
   // Initiate ncurses
-  initscr();
-  noecho();
-  cbreak();
-  keypad(stdscr, TRUE);
+  // initscr();
+  // noecho();
+  // cbreak();
+  // keypad(stdscr, TRUE);
+
   // -1 means to sniff until error occurs
   pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
 
