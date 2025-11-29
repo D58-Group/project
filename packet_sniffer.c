@@ -33,6 +33,9 @@ struct packet_node {
   unsigned char ar_tha[ETHER_ADDR_LEN];
 
   uint32_t length;             
+  
+  char *info; 
+
 };
 typedef struct packet_node packet_node_t;
 
@@ -187,7 +190,8 @@ packet_node_t* add_packet_node(const uint8_t* packet,
   if (packet_list == next || packet_list == NULL) {
     packet_list = node;
   }
-
+  
+  node->info = format_hdrs_to_string(node->packet, node->length);
   return node;
 }
 
@@ -195,6 +199,8 @@ void delete_packet_nodes(packet_node_t* node) {
   while (node) {
     packet_node_t* next = node->next;
     free(node->packet);
+    if (node->info)
+      free(node->info);
     free(node);
     node = next;
   }
@@ -213,6 +219,7 @@ void print_packet_node(packet_node_t* node) {
   printw("timestamp: %d\n", (long)node->hdr.ts.tv_sec);
   printw("packet type: %d\n", ethertype((uint8_t*)(node->packet)));
 }
+
 
 void print_available_devices(pcap_if_t* devices) {
   pcap_if_t* device = devices;
