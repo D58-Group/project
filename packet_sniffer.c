@@ -6,21 +6,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/time.h>
-
 #include "sr_utils.h"
+#include "sorting.h"
+#include <arpa/inet.h> 
 #include "sr_protocol.h"
+
 
 #define MAX_ROWS 10000
 #define MAX_COLS 180
 
 /* Packet Node Structure */
 struct packet_node {
-  const uint8_t* packet;
-  const struct pcap_pkthdr* packet_hdr;
-  struct packet_node* prev;
-  struct packet_node* next;
-} typedef packet_node_t;
+  uint8_t *packet;
+  struct pcap_pkthdr hdr;      
+  struct packet_node *prev;
+  struct packet_node *next;
+
+  unsigned int number;         
+  double time_rel;             
+
+  uint32_t src_ip;             
+  uint32_t dst_ip;
+  uint8_t  proto;              
+
+  uint32_t length;             
+};
+typedef struct packet_node packet_node_t;
 
 /* Global Variables */
 packet_node_t *packet_list = NULL;
@@ -29,17 +40,18 @@ WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
 int current_line = 0;
 pthread_t key_event_thread;
-struct timeval start_time;
 
 /* Command Line Argument Functions */
+
 char* usage =
-    "Usage:"
-    " %s -i <interface> [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
-    "  -i <interface>    Interface to sniff on\n"
-    "  -o <filename>     File to save captured packets (default=stdout)\n"
-    "  -p <protocol>     Protocol to filter (default=any)\n"
-    "  -t <duration>     Duration to sniff in seconds (default=unlimited)\n"
-    "  -h                View usage information\n";
+    "Usage: "
+    "%s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
+    "  -i [interface]   Interface to sniff on\n"
+    "                   If interface is omitted, lists available interfaces\n"
+    "  -o <filename>    File to save captured packets (default=stdout)\n"
+    "  -p <protocol>    Protocol to filter (default=any)\n"
+    "  -t <duration>    Duration to sniff in seconds (default=unlimited)\n"
+    "  -h               View usage information\n";
 
 struct options {
   char* interface;
@@ -49,16 +61,22 @@ struct options {
 } typedef options_t;
 
 options_t parse_options(int argc, char* argv[]) {
-  options_t options;
+  if (argc == 1) {
+    printf(usage, argv[0]);
+    exit(0);
+  }
 
+  options_t options;
   options.interface = NULL;
   options.filename = NULL;
   options.protocol = NULL;
   options.duration = -1;
 
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
-      options.interface = argv[++i];
+    if (strcmp(argv[i], "-i") == 0) {
+      if (i + 1 < argc) {
+        options.interface = argv[++i];
+      }
     } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
       options.filename = argv[++i];
     } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
@@ -69,58 +87,114 @@ options_t parse_options(int argc, char* argv[]) {
       printf(usage, argv[0]);
       exit(0);
     } else {
-      printf("Unknown option: %s\n", argv[i]);
+      printf("Invalid argument: %s\n", argv[i]);
       printf(usage, argv[0]);
       exit(1);
     }
   }
 
-  if (options.interface == NULL) {
-    printf("Error: Interface is required.\n");
-    printf(usage, argv[0]);
-    exit(1);
-  }
-
   return options;
 }
 
-/* Packet list functions */
-packet_node_t *add_packet_node(const uint8_t* packet, const struct pcap_pkthdr* packet_hdr,
-   packet_node_t *prev, packet_node_t *next) {
-  packet_node_t *node = malloc(sizeof(packet_node_t));
-  node->packet = packet;
-  node->packet_hdr = packet_hdr;
-  node->prev = prev;
-  node->next = next;
+pcap_if_t* find_device_by_name(pcap_if_t* devices, const char* name) {
+  pcap_if_t* device = devices;
+  while (device != NULL) {
+    if (strcmp(device->name, name) == 0) {
+      return device;
+    }
+    device = device->next;
+  }
+  return NULL;
+}
 
-  if (packet_list != NULL) {
-    packet_list->prev = node;
+packet_node_t* add_packet_node(const uint8_t* packet,
+                               const struct pcap_pkthdr* packet_hdr,
+                               packet_node_t* prev,
+                               packet_node_t* next,
+                               unsigned int number,
+                               double rel_time) {
+  packet_node_t* node = malloc(sizeof(packet_node_t));
+  if (!node) {
+    return NULL;
   }
 
-  packet_list = node;
+  //copy header and length 
+  node->hdr = *packet_hdr;          
+  node->length = packet_hdr->len;
+
+  //copy bytes from packer
+  node->packet = malloc(packet_hdr->len);
+  if (!node->packet) {
+    free(node);
+    return NULL;
+  }
+  memcpy(node->packet, packet, packet_hdr->len);
+
+  node->number   = number;
+  node->time_rel = rel_time;
+
+  node->src_ip = 0;
+  node->dst_ip = 0;
+  node->proto  = 0;
+
+  //IP handling
+  if (packet_hdr->len >= sizeof(sr_ethernet_hdr_t)) {
+    uint16_t ethtype_val = ethertype(node->packet);
+    if (ethtype_val == ethertype_ip &&
+        packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)) {
+
+      const sr_ip_hdr_t *ip =
+        (const sr_ip_hdr_t *)(node->packet + sizeof(sr_ethernet_hdr_t));
+
+      node->src_ip = ntohl(ip->ip_src);
+      node->dst_ip = ntohl(ip->ip_dst);
+      node->proto  = ip->ip_p;
+    }
+  }
+
+  //add to packet list
+  node->prev = prev;
+  node->next = next;
+  if (next) {
+    next->prev = node;
+  }
+  if (packet_list == next || packet_list == NULL) {
+    packet_list = node;
+  }
+
   return node;
 }
 
-void delete_packet_nodes(packet_node_t *node) {
-  packet_node_t *next = node->next;
-  free(node);
-  if (next != NULL) {
-    delete_packet_nodes(next);
+void delete_packet_nodes(packet_node_t* node) {
+  while (node) {
+    packet_node_t* next = node->next;
+    free(node->packet);
+    free(node);
+    node = next;
   }
 }
 
-int get_packet_list_length(int length, packet_node_t *node) {
+
+int get_packet_list_length(int length, packet_node_t* node) {
   if (node->next == NULL) {
     return length;
   }
   return get_packet_list_length(length + 1, node->next);
 }
 
-void print_packet_node(packet_node_t *node) {
+void print_packet_node(packet_node_t* node) {
   printw("packet: \n");
-  printw("timestamp: %d\n", node->packet_hdr->ts);
-  printw("packet type: %d\n", ethertype((uint8_t *)(node->packet)));
+  printw("timestamp: %d\n", (long)node->hdr.ts.tv_sec);
+  printw("packet type: %d\n", ethertype((uint8_t*)(node->packet)));
+}
 
+void print_available_devices(pcap_if_t* devices) {
+  pcap_if_t* device = devices;
+  printf("Available devices are:\n");
+  while (device != NULL) {
+    printf("  %s\n", device->name);
+    device = device->next;
+  }
 }
 
 void refresh_pad() {
@@ -132,26 +206,50 @@ void refresh_pad() {
    prefresh(pad, current_line, 0, 2, 0, 20, 80);
 }
 
-void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
+void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
-  if (pad_length == 0) {
-    start_time = header->ts;
-  }
-  packet_node_t *new_node = add_packet_node(packet, header, NULL, packet_list);
-  // printw("length: %d \n", header->len);
-  // printw("list length: %d\n", get_packet_list_length(0, new_node));
-  // print_packet_node(new_node);
-  // refresh();
-  // getch();
-  // endwin();
-  /* timestamp, type, length, src, dst*/
+  
+  options_t *opts = (options_t *)args;
 
-  // Set start time if it's the first packet
+  // filter first: only keep packets that match
+  if (!match_protocol(packet, header->len, opts->protocol)) {
+      return;
+  }
+
+  // static state for numbering and time
+  static unsigned int packet_count = 0;
+  static struct timeval first_ts;
+  static int first_ts_set = 0;
+
+  packet_count++;
+
+  if (!first_ts_set) {
+    first_ts = header->ts;
+    first_ts_set = 1;
+  }
+
+  double t = (header->ts.tv_sec  - first_ts.tv_sec) +
+             (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
+
+  // add to packet list 
+  packet_node_t* new_node =
+    add_packet_node(packet, header, NULL, packet_list, packet_count, t);
+
+
+  if (!new_node) {
+    //mem fail
+    return;
+  }
+
+  // printf("Got packet of length %u\n", header->len);
+  // fflush(stdout);
+
+  // print_hdrs((uint8_t*)packet, header->len);
 
   wmove(pad, pad_length, 2);
   char buf[50];
   struct timeval time_diff;
-  timersub(&header->ts, &start_time, &time_diff);
+  // timersub(&header->ts, &start_time, &time_diff);
   
   sprintf(buf, "%ld.%06ld", time_diff.tv_sec, time_diff.tv_usec);
   waddstr(pad, buf);
@@ -288,10 +386,17 @@ void display_window() {
 
 }
 
-int main(int argc, char *argv[]) {
+
+
+
+
+
+
+int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
-  //   pcap_if_t* device;
-  pcap_t *packet_capture_handle;
+  pcap_if_t* devices;  // all devices
+  pcap_if_t* device;   // selected device
+  pcap_t* packet_capture_handle;
   int promisc = 1;  // promiscuous mode
   int to_ms = 750;  // read timeout in ms
   // struct pcap_pkthdr hdr;
@@ -299,39 +404,39 @@ int main(int argc, char *argv[]) {
   // Parse command line options
   options_t options = parse_options(argc, argv);
 
-  printf("Sniffing on interface: %s\n", options.interface);
-  printf("Output file: %s\n", options.filename ? options.filename : "stdout");
-  printf("Protocol filter: %s\n", options.protocol ? options.protocol : "any");
-  printf("Duration: %d\n", options.duration);
-  fflush(stdout);
+  // Find all available devices
+  if (pcap_findalldevs(&devices, errbuf) == -1) {
+    printf("Error finding devices: %s\n", errbuf);
+    exit(1);
+  }
 
-  // List devices and select first device in list
-  // pcap_findalldevs(&device, errbuf);  // TODO free list with pcap_freealldevs
-
-  // if (device == NULL) {
-  //   printf("Error finding devices, %s", errbuf);
-  //   exit(1);
-  // }
-
-
-  // TODO: add option for inputing device name instead of using default
+  // Select device
+  if (options.interface == NULL) {
+    print_available_devices(devices);
+    pcap_freealldevs(devices);
+    exit(1);
+  } else {
+    device = find_device_by_name(devices, options.interface);
+    if (device == NULL) {
+      printf("Device '%s' not found\n", options.interface);
+      print_available_devices(devices);
+      pcap_freealldevs(devices);
+      exit(1);
+    }
+  }
 
   // TODO: Allow for reading packets from pathname using pcap_open_offline, and
   // pcap_fopen_offline()
 
   // TODO: Can filter using pcap_compile and pcap_setfilter
 
-
   printf("Capturing packets on device: %s\n", options.interface);
-  fflush(stdout);
 
   packet_capture_handle =
       pcap_open_live(options.interface, BUFSIZ, promisc, to_ms, errbuf);
 
   if (packet_capture_handle == NULL) {
-    fprintf(stderr, "Error opening device '%s': %s\n",
-            options.interface, errbuf);
-    fflush(stderr);
+    printf("Error opening device '%s': %s\n", options.interface, errbuf);
     exit(1);
   }
 
@@ -346,20 +451,19 @@ int main(int argc, char *argv[]) {
   cbreak();
   keypad(stdscr, TRUE);
 
-
   // Setup pad
   initialize_pad();
 
-  // Set start time
-  gettimeofday(&start_time, NULL);
+  printf("pcap_open_live succeeded, starting capture loop\n");
 
   // -1 means to sniff until error occurs
-  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
+  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t *)&options);
   printf("pcap_loop returned with code %d\n", rc);
-  fflush(stdout);
-  
 
   // Close session
   pcap_close(packet_capture_handle);
+
+  // Free device list
+  pcap_freealldevs(devices);
   return 0;
 }

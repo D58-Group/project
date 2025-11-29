@@ -3,7 +3,7 @@ CFLAGS=-Wall -g
 LIBS=-lpcap -lncurses -pthread
 
 TARGET=packet_sniffer
-SRCS=packet_sniffer.c sr_utils.c
+SRCS=packet_sniffer.c sr_utils.c sorting.c
 OBJS=$(SRCS:.c=.o)
 
 .PHONY: all clean
