@@ -38,10 +38,12 @@ typedef struct packet_node packet_node_t;
 
 /* Global Variables */
 packet_node_t *packet_list = NULL;
+packet_node_t *first_node = NULL;
 int pad_length = 0;
 WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
 int current_line = 0;
+int previous_line = -1;
 pthread_t key_event_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
@@ -227,10 +229,16 @@ void refresh_pad() {
   } else if (current_line >= pad_length) {
     current_line = pad_length - 1;
   }
-   prefresh(pad, current_line, 0, 2, 0, 20, MAX_COLS - 1);
+  if (has_colors()) {
+     mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+  }
+  prefresh(pad, current_line, 0, 2, 0, 20, MAX_COLS - 1);
 }
 
 void print_pad_row(packet_node_t *node){
+  if (has_colors() && pad_length == current_line) {
+    attron(COLOR_PAIR(1));
+  }
   char buf[100];
   mvwprintw(pad, pad_length, PACKET_NUM_INDEX, "%u", node->number);
   mvwprintw(pad, pad_length, TIME_INDEX, "%lf", node->time_rel);
@@ -268,16 +276,20 @@ void print_pad_row(packet_node_t *node){
   mvwprintw(pad, pad_length, PROTOCOL_INDEX, "%s", buf);
   mvwprintw(pad, pad_length, LENGTH_INDEX, "%d", node->length);
 
+  if (has_colors() && pad_length == current_line) {
+    attroff(COLOR_PAIR(1));
+  }
+
   pad_length += 1;
 }
 
 void update_pad() {
   werase(pad);
   pad_length = 0;
-  packet_node_t* node = packet_list;
+  packet_node_t* node = first_node;
   while (node != NULL) {
     print_pad_row(node);
-    node = node->next;
+    node = node->prev;
   }
   refresh_pad();
 }
@@ -301,7 +313,6 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
 
   if (!first_ts_set) {
     first_ts = header->ts;
-    first_ts_set = 1;
   }
 
   double t = (header->ts.tv_sec  - first_ts.tv_sec) +
@@ -311,10 +322,14 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   packet_node_t* new_node =
     add_packet_node(packet, header, NULL, packet_list, packet_count, t);
 
-
   if (!new_node) {
     //mem fail
     return;
+  }
+
+  if (!first_ts_set) {
+    first_node = new_node;
+    first_ts_set = 1;
   }
 
   // Update pad display with new packet
@@ -338,6 +353,7 @@ void display_sniffer_header() {
 /* ncurses dynamic terminal */
 void initialize_pad() {
   pad = newpad(MAX_ROWS, MAX_COLS);
+  wattron(pad, COLOR_PAIR(2));
   display_sniffer_header();
   refresh_pad();
 
@@ -357,7 +373,12 @@ void *handle_key_event(void *arg) {
         if (current_line <= 0) {
           current_line = 0;
         } else {
+          previous_line = current_line;
           current_line -= 1;
+        }
+        if (has_colors()) {
+          mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+          mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
         }
         refresh_pad();
         break;
@@ -365,7 +386,12 @@ void *handle_key_event(void *arg) {
         if (current_line >= MAX_ROWS) {
           current_line = MAX_ROWS;
         } else {
+          previous_line = current_line;
           current_line += 1;
+        }
+        if (has_colors()) {
+          mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+          mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
         }
         refresh_pad();
         break;
@@ -465,6 +491,11 @@ int main(int argc, char* argv[]) {
   
   // Initiate ncurses
   initscr();
+  if(has_colors()) {
+    start_color();
+    init_pair(1, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(2, COLOR_WHITE, COLOR_BLACK);
+  }
   noecho();
   cbreak();
   keypad(stdscr, TRUE);
