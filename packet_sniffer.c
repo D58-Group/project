@@ -14,7 +14,7 @@ struct packet_node {
   struct packet_node* next;
 } typedef packet_node_t;
 
-packet_node_t *packet_list = NULL;
+packet_node_t* packet_list = NULL;
 
 char* usage =
     "Usage:"
@@ -68,9 +68,10 @@ options_t parse_options(int argc, char* argv[]) {
   return options;
 }
 
-packet_node_t *add_packet_node(const uint8_t* packet, const struct pcap_pkthdr* packet_hdr,
-   packet_node_t *prev, packet_node_t *next) {
-  packet_node_t *node = malloc(sizeof(packet_node_t));
+packet_node_t* add_packet_node(const uint8_t* packet,
+                               const struct pcap_pkthdr* packet_hdr,
+                               packet_node_t* prev, packet_node_t* next) {
+  packet_node_t* node = malloc(sizeof(packet_node_t));
   node->packet = packet;
   node->packet_hdr = packet_hdr;
   node->prev = prev;
@@ -84,36 +85,35 @@ packet_node_t *add_packet_node(const uint8_t* packet, const struct pcap_pkthdr* 
   return node;
 }
 
-void delete_packet_nodes(packet_node_t *node) {
-  packet_node_t *next = node->next;
+void delete_packet_nodes(packet_node_t* node) {
+  packet_node_t* next = node->next;
   free(node);
   if (next != NULL) {
     delete_packet_nodes(node);
   }
 }
 
-int get_packet_list_length(int length, packet_node_t *node) {
+int get_packet_list_length(int length, packet_node_t* node) {
   if (node->next == NULL) {
     return length;
   }
   return get_packet_list_length(length + 1, node->next);
 }
 
-void print_packet_node(packet_node_t *node) {
+void print_packet_node(packet_node_t* node) {
   printw("packet: \n");
   printw("timestamp: %d\n", node->packet_hdr->ts);
-  printw("packet type: %d\n", ethertype((uint8_t *)(node->packet)));
-
+  printw("packet type: %d\n", ethertype((uint8_t*)(node->packet)));
 }
 
-void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
+void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
-  packet_node_t *new_node = add_packet_node(packet, header, NULL, packet_list);
+  packet_node_t* new_node = add_packet_node(packet, header, NULL, packet_list);
 
   printf("Got packet of length %u\n", header->len);
   fflush(stdout);
 
-  print_hdrs((uint8_t *)packet, header->len);
+  print_hdrs((uint8_t*)packet, header->len);
   /* Uncomment below for ncurses ui */
   // printw("length: %d \n", header->len);
   // printw("list length: %d\n", get_packet_list_length(0, new_node));
@@ -123,10 +123,10 @@ void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
   // endwin();
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
   //   pcap_if_t* device;
-  pcap_t *packet_capture_handle;
+  pcap_t* packet_capture_handle;
   int promisc = 1;  // promiscuous mode
   int to_ms = 750;  // read timeout in ms
   // struct pcap_pkthdr hdr;
@@ -148,14 +148,12 @@ int main(int argc, char *argv[]) {
   //   exit(1);
   // }
 
-
   // TODO: add option for inputing device name instead of using default
 
   // TODO: Allow for reading packets from pathname using pcap_open_offline, and
   // pcap_fopen_offline()
 
   // TODO: Can filter using pcap_compile and pcap_setfilter
-
 
   printf("Capturing packets on device: %s\n", options.interface);
   fflush(stdout);
@@ -164,12 +162,12 @@ int main(int argc, char *argv[]) {
       pcap_open_live(options.interface, BUFSIZ, promisc, to_ms, errbuf);
 
   if (packet_capture_handle == NULL) {
-    fprintf(stderr, "Error opening device '%s': %s\n",
-            options.interface, errbuf);
+    fprintf(stderr, "Error opening device '%s': %s\n", options.interface,
+            errbuf);
     fflush(stderr);
     exit(1);
   }
-  
+
   // Initiate ncurses
   // initscr();
   // noecho();
@@ -183,7 +181,6 @@ int main(int argc, char *argv[]) {
   int rc = pcap_loop(packet_capture_handle, -1, handle_packet, NULL);
   printf("pcap_loop returned with code %d\n", rc);
   fflush(stdout);
-  
 
   // Close session
   pcap_close(packet_capture_handle);
