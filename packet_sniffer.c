@@ -1,12 +1,20 @@
 #include <errno.h>
 #include <ncurses.h>
 #include <pcap.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "sr_utils.h"
+#include "sr_protocol.h"
 
+#define MAX_ROWS 10000
+#define MAX_COLS 120
+
+/* Packet Node Structure */
 struct packet_node {
   const uint8_t* packet;
   const struct pcap_pkthdr* packet_hdr;
@@ -14,8 +22,15 @@ struct packet_node {
   struct packet_node* next;
 } typedef packet_node_t;
 
+/* Global Variables */
 packet_node_t *packet_list = NULL;
+int pad_length = 0;
+WINDOW *pad;
+int current_line = 0;
+pthread_t key_event_thread;
+struct timeval start_time;
 
+/* Command Line Argument Functions */
 char* usage =
     "Usage:"
     " %s -i <interface> [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
@@ -68,6 +83,7 @@ options_t parse_options(int argc, char* argv[]) {
   return options;
 }
 
+/* Packet list functions */
 packet_node_t *add_packet_node(const uint8_t* packet, const struct pcap_pkthdr* packet_hdr,
    packet_node_t *prev, packet_node_t *next) {
   packet_node_t *node = malloc(sizeof(packet_node_t));
@@ -88,7 +104,7 @@ void delete_packet_nodes(packet_node_t *node) {
   packet_node_t *next = node->next;
   free(node);
   if (next != NULL) {
-    delete_packet_nodes(node);
+    delete_packet_nodes(next);
   }
 }
 
@@ -106,21 +122,135 @@ void print_packet_node(packet_node_t *node) {
 
 }
 
+void refresh_pad() {
+  if (current_line < 0) {
+    current_line = 0;
+  } else if (current_line >= pad_length) {
+    current_line = pad_length - 1;
+  }
+   prefresh(pad, current_line, 0, 0, 0, 20, 80);
+}
+
 void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
+  if (pad_length == 0) {
+    start_time = header->ts;
+  }
   packet_node_t *new_node = add_packet_node(packet, header, NULL, packet_list);
-
-  printf("Got packet of length %u\n", header->len);
-  fflush(stdout);
-
-  print_hdrs((uint8_t *)packet, header->len);
-  /* Uncomment below for ncurses ui */
   // printw("length: %d \n", header->len);
   // printw("list length: %d\n", get_packet_list_length(0, new_node));
   // print_packet_node(new_node);
   // refresh();
   // getch();
   // endwin();
+  /* timestamp, type, length, src, dst*/
+
+  // Set start time if it's the first packet
+
+  wmove(pad, pad_length, 2);
+  char buf[50];
+  struct timeval time_diff;
+  timersub(&header->ts, &start_time, &time_diff);
+  
+  sprintf(buf, "%ld.%06ld", time_diff.tv_sec, time_diff.tv_usec);
+  waddstr(pad, buf);
+
+  wmove(pad, pad_length, 20);
+  sprintf(buf, "%d", header->len);
+  waddstr(pad, buf);
+
+  enum protocol proto = get_protocol(packet);
+  if (proto == ARP) {
+    sprintf(buf, "%s", "ARP");
+  } else if (proto == ICMP) {
+    sprintf(buf, "%s", "ICMP");
+  } else if (proto == TCP) {
+    sprintf(buf, "%s", "TCP");
+  } else if (proto == UDP) {
+    sprintf(buf, "%s", "UDP");
+  } else if (proto == IPV4) {
+    sprintf(buf, "%s", "IPv4");
+  } else {
+    sprintf(buf, "%s", "OTHER");
+  }
+  
+  wmove(pad, pad_length, 30);
+  // sprintf(buf, "%s", get_protocol(packet));
+  waddstr(pad, buf);
+
+  wmove(pad, pad_length, 45);
+  char src[80];
+  char dst[80];
+  get_source_dest(src, dst, packet);
+  waddstr(pad, src);
+  wmove(pad, pad_length, 70);
+  waddstr(pad, dst);
+
+
+
+  // int max_cols, max_rows;
+  // getmaxyx(pad, max_cols, max_rows);
+
+  refresh_pad();
+  pad_length += 1;
+}
+
+/* ncurses dynamic terminal */
+void initialize_pad() {
+  pad = newpad(MAX_ROWS, MAX_COLS);
+  refresh_pad();
+
+  if(pad == NULL) {
+    endwin();
+    fprintf(stderr, "Error creating pad: %s\n", strerror(errno));
+    exit(1);
+  }
+}
+
+void *handle_key_event(void *arg) {
+  int key;
+  while(1) {
+    key = wgetch(stdscr);
+    switch(key) {
+      case KEY_UP:
+        current_line -= 1;
+        refresh_pad();
+        break;
+      case KEY_DOWN:
+        current_line += 1;
+        refresh_pad();
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/* Handling Ctrl-C */
+void handle_signal(int signal) {
+  // Free packet list
+  delete_packet_nodes(packet_list);
+
+  // Exit key event thread
+  pthread_cancel(key_event_thread);
+  pthread_join(key_event_thread, NULL);
+
+  int max_cols, max_rows;
+  getmaxyx(pad, max_rows, max_cols);
+
+  // Close ncurses window
+  delwin(pad);
+  endwin();
+  
+  printf("current_line: %d\n", current_line);
+  printf("max_rows: %d, max_cols: %d\n", max_rows, max_cols);
+
+  printf("Closing packet sniffer \n");
+  exit(0);
+}
+
+void display_window() {
+
 }
 
 int main(int argc, char *argv[]) {
@@ -169,15 +299,24 @@ int main(int argc, char *argv[]) {
     fflush(stderr);
     exit(1);
   }
+
+  // Handle ctrl-c
+  signal(SIGINT, handle_signal);
+
+  pthread_create(&key_event_thread, NULL, handle_key_event, NULL);
   
   // Initiate ncurses
-  // initscr();
-  // noecho();
-  // cbreak();
-  // keypad(stdscr, TRUE);
+  initscr();
+  noecho();
+  cbreak();
+  keypad(stdscr, TRUE);
 
-  printf("pcap_open_live succeeded, starting capture loop\n");
-  fflush(stdout);
+
+  // Setup pad
+  initialize_pad();
+
+  // Set start time
+  gettimeofday(&start_time, NULL);
 
   // -1 means to sniff until error occurs
   int rc = pcap_loop(packet_capture_handle, -1, handle_packet, NULL);

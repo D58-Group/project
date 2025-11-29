@@ -48,4 +48,8 @@ void print_hdr_udp(uint8_t *buf);
 /* prints all headers, starting from eth */
 void print_hdrs(uint8_t *buf, uint32_t length);
 
+/* Dynamic ui*/
+enum protocol get_protocol(const uint8_t *packet);
+void get_source_dest(char *src, char *dst, const uint8_t *packet);
+
 #endif /* -- SR_UTILS_H -- */

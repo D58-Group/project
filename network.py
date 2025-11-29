@@ -14,8 +14,9 @@ class SnifferTopo(Topo):
 topos = {'sniffer': SnifferTopo}
 
 #run with: 
-#sudo mn --custom network.py --topo sniffer --mac --switch ovsbr --controller none
-
+#sudo mn --custom network.py --topo sniffer --mac --switch ovsk --controller none
+# sudo mn --custom network.py --topo sniffer --mac --switch ovsbr --controller none
+# sudo mnexec -a $(pgrep -f "mininet:h1") ./packet_sniffer -i eth0
 
 #to run our sniffer: 
 #sn /home/mininet/project/packet_sniffer -i h1-eth0
