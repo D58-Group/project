@@ -126,9 +126,6 @@ int main(int argc, char* argv[]) {
   pcap_t* packet_capture_handle;
   int promisc = 1;  // promiscuous mode
   int to_ms = 750;  // read time in ms
-  int continue_sniffing = 1;
-
-
   // struct pcap_pkthdr hdr;
 
   // Parse command line options
