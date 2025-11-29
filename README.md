@@ -11,18 +11,19 @@ sudo apt-get install libncurses-dev
 make
 
 # run
-sudo ./packet_sniffer -i interface
+sudo ./packet_sniffer -h
 ```
 
 ## Options
 
 ```bash
-Usage: ./packet_sniffer.out -i <interface> [-o <filename>] [-p <protocol>] [-t <duration>] [-h]
-  -i <interface>    Interface to sniff on
-  -o <filename>     File to save captured packets (default=stdout)
-  -p <protocol>     Protocol to filter (default=any)
-  -t <duration>     Duration to sniff in seconds (default=unlimited)
-  -h                View usage information
+Usage: ./packet_sniffer [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]
+  -i [interface]   Interface to sniff on
+                   If interface is omitted, lists available interfaces
+  -o <filename>    File to save captured packets (default=stdout)
+  -p <protocol>    Protocol to filter (default=any)
+  -t <duration>    Duration to sniff in seconds (default=unlimited)
+  -h               View usage information
 ```
 
 ## Resources
