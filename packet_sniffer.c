@@ -210,7 +210,7 @@ int main(int argc, char* argv[]) {
   printf("pcap_open_live succeeded, starting capture loop\n");
 
   // -1 means to sniff until error occurs
-  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (u_char *)&options);
+  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t *)&options);
   printf("pcap_loop returned with code %d\n", rc);
 
   // Close session
