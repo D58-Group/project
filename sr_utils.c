@@ -209,8 +209,20 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
         minlength += sizeof(sr_tcp_hdr_t);
         if (length < minlength)
           fprintf(stderr, "Failed to print TCP header, insufficient length\n");
-        else
+        else {
           print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+          sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+          int tcp_data_offset = tcp_hdr->tcp_offx2 >> 4;  /* get data offset (last 4 bytes are reserved) */
+          int tcp_header_length = tcp_data_offset * 4;
+          if (length > sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length) {
+            fprintf(stderr, "\nTCP payload\n");
+            fprintf(stderr, "Header length: %d\n", tcp_header_length);
+            fprintf(stderr, "Payload length: %ld\n", length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
+            fwrite(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length, 1,
+                 length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t), stderr);
+            fwrite("\n", 1, 1, stderr);
+          }
+        }
     }
   }
 

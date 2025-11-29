@@ -19,8 +19,8 @@ struct packet_node {
 packet_node_t* packet_list = NULL;
 
 char* usage =
-    "Usage:"
-    " %s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
+    "Usage: "
+    "%s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
     "  -i [interface]   Interface to sniff on\n"
     "                   If interface is omitted, lists available interfaces\n"
     "  -o <filename>    File to save captured packets (default=stdout)\n"
