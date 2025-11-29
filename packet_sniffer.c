@@ -109,10 +109,13 @@ void print_packet_node(packet_node_t *node) {
 void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
   packet_node_t *new_node = add_packet_node(packet, header, NULL, packet_list);
-  printw("length: %d \n", header->len);
-  printw("list length: %d\n", get_packet_list_length(0, new_node));
-  print_packet_node(new_node);
-  refresh();
+
+  print_hdrs((uint8_t*)packet, header->len);
+  /* Uncomment below for ncurses ui */
+  // printw("length: %d \n", header->len);
+  // printw("list length: %d\n", get_packet_list_length(0, new_node));
+  // print_packet_node(new_node);
+  // refresh();
   // getch();
   // endwin();
 }
