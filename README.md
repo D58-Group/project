@@ -5,6 +5,7 @@
 ```bash
 # prerequisites
 sudo apt-get install libpcap-dev
+sudo apt-get install libncurses-dev
 
 # compile
 make
