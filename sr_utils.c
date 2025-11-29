@@ -255,7 +255,7 @@ enum protocol get_protocol(const uint8_t *packet) {
 /* Prints out formatted Ethernet address, e.g. 00:11:22:33:44:55 */
 void convert_addr_eth_to_str(uint8_t *addr, char *str_addr) {
   strcpy(str_addr, "");
-  char buf[50];
+  char buf[100];
   int pos = 0;
   uint8_t cur;
   for (; pos < ETHER_ADDR_LEN; pos++) {
@@ -270,7 +270,7 @@ void convert_addr_eth_to_str(uint8_t *addr, char *str_addr) {
 void convert_addr_ip_int_to_str(uint32_t ip, char *str_addr) {
   uint32_t curOctet = ip >> 24;
   strcpy(str_addr, "");
-  char buf[50];
+  char buf[100];
   sprintf(buf, "%d.", curOctet);
   strcat(str_addr, buf);
   curOctet = (ip << 8) >> 24;
@@ -298,6 +298,8 @@ void get_source_dest(char *src, char *dst, const uint8_t *packet) {
     convert_addr_ip_int_to_str(ntohl(iphdr->ip_src), src);
     // destination ip address
     convert_addr_ip_int_to_str(ntohl(iphdr->ip_dst), dst);
-  } 
+  } else {
+    //TODO
+  }
 }
 

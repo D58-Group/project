@@ -12,7 +12,7 @@
 #include "sr_protocol.h"
 
 #define MAX_ROWS 10000
-#define MAX_COLS 120
+#define MAX_COLS 180
 
 /* Packet Node Structure */
 struct packet_node {
@@ -25,7 +25,8 @@ struct packet_node {
 /* Global Variables */
 packet_node_t *packet_list = NULL;
 int pad_length = 0;
-WINDOW *pad;
+WINDOW *pad = NULL;
+WINDOW *win_title = NULL;
 int current_line = 0;
 pthread_t key_event_thread;
 struct timeval start_time;
@@ -128,7 +129,7 @@ void refresh_pad() {
   } else if (current_line >= pad_length) {
     current_line = pad_length - 1;
   }
-   prefresh(pad, current_line, 0, 0, 0, 20, 80);
+   prefresh(pad, current_line, 0, 2, 0, 20, 80);
 }
 
 void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
@@ -179,8 +180,8 @@ void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
   waddstr(pad, buf);
 
   wmove(pad, pad_length, 45);
-  char src[80];
-  char dst[80];
+  char src[120];
+  char dst[120];
   get_source_dest(src, dst, packet);
   waddstr(pad, src);
   wmove(pad, pad_length, 70);
@@ -195,9 +196,23 @@ void handle_packet(uint8_t * args_unused, const struct pcap_pkthdr* header,
   pad_length += 1;
 }
 
+void display_sniffer_header() {
+  win_title = newwin(1, MAX_COLS, 0, 0);
+  werase(win_title);
+  wrefresh(win_title);
+  // box(win_title, '|', '-');  
+  mvwprintw(win_title, 0, 0, "Time");
+  mvwprintw(win_title, 0, 20, "Length");
+  mvwprintw(win_title, 0, 30, "Protocol");
+  mvwprintw(win_title, 0, 45, "Source");
+  mvwprintw(win_title, 0, 70, "Destination");
+  wrefresh(win_title);
+}
+
 /* ncurses dynamic terminal */
 void initialize_pad() {
   pad = newpad(MAX_ROWS, MAX_COLS);
+  display_sniffer_header();
   refresh_pad();
 
   if(pad == NULL) {
@@ -213,11 +228,19 @@ void *handle_key_event(void *arg) {
     key = wgetch(stdscr);
     switch(key) {
       case KEY_UP:
-        current_line -= 1;
+        if (current_line <= 0) {
+          current_line = 0;
+        } else {
+          current_line -= 1;
+        }
         refresh_pad();
         break;
       case KEY_DOWN:
-        current_line += 1;
+        if (current_line >= MAX_ROWS) {
+          current_line = MAX_ROWS;
+        } else {
+          current_line += 1;
+        }
         refresh_pad();
         break;
       default:
@@ -226,10 +249,23 @@ void *handle_key_event(void *arg) {
   }
 }
 
+void delete_windows() {
+  if (pad != NULL) {
+    delwin(pad);
+  }
+  if (win_title != NULL) {
+    delwin(win_title);
+  }
+  endwin();
+}
+
 /* Handling Ctrl-C */
 void handle_signal(int signal) {
   // Free packet list
-  delete_packet_nodes(packet_list);
+  if (packet_list != NULL) {
+    delete_packet_nodes(packet_list);
+  }
+
 
   // Exit key event thread
   pthread_cancel(key_event_thread);
@@ -239,8 +275,7 @@ void handle_signal(int signal) {
   getmaxyx(pad, max_rows, max_cols);
 
   // Close ncurses window
-  delwin(pad);
-  endwin();
+  delete_windows();
   
   printf("current_line: %d\n", current_line);
   printf("max_rows: %d, max_cols: %d\n", max_rows, max_cols);
