@@ -13,7 +13,7 @@
 
 
 #define MAX_ROWS 10000
-#define MAX_COLS 180
+#define MAX_COLS 140
 
 /* Packet Node Structure */
 struct packet_node {
@@ -27,7 +27,10 @@ struct packet_node {
 
   uint32_t src_ip;             
   uint32_t dst_ip;
-  uint8_t  proto;              
+  enum protocol proto;
+
+  unsigned char ar_sha[ETHER_ADDR_LEN];
+  unsigned char ar_tha[ETHER_ADDR_LEN];
 
   uint32_t length;             
 };
@@ -40,6 +43,12 @@ WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
 int current_line = 0;
 pthread_t key_event_thread;
+const int PACKET_NUM_INDEX = 0;
+const int TIME_INDEX = 10;
+const int SOURCE_INDEX = 30;
+const int DESTINATION_INDEX = 60;
+const int PROTOCOL_INDEX = 90;
+const int LENGTH_INDEX = 110;
 
 /* Command Line Argument Functions */
 
@@ -136,6 +145,8 @@ packet_node_t* add_packet_node(const uint8_t* packet,
   node->src_ip = 0;
   node->dst_ip = 0;
   node->proto  = 0;
+  memset(node->ar_sha, 0, ETHER_ADDR_LEN);
+  memset(node->ar_tha, 0, ETHER_ADDR_LEN);
 
   //IP handling
   if (packet_hdr->len >= sizeof(sr_ethernet_hdr_t)) {
@@ -149,8 +160,21 @@ packet_node_t* add_packet_node(const uint8_t* packet,
       node->src_ip = ntohl(ip->ip_src);
       node->dst_ip = ntohl(ip->ip_dst);
       node->proto  = ip->ip_p;
+    } else if (ethtype_val == ethertype_arp &&
+      packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
+      sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(node->packet + sizeof(sr_ethernet_hdr_t));
+      node->proto = (uint8_t)ethertype_arp;
+      node->src_ip = ntohl(arp_hdr->ar_sip);
+      node->dst_ip = ntohl(arp_hdr->ar_tip);
+      memcpy(node->ar_sha, arp_hdr->ar_sha, ETHER_ADDR_LEN);
+      memcpy(node->ar_tha, arp_hdr->ar_tha, ETHER_ADDR_LEN);
+    }
+    else {
+      node->proto = ethtype_val;
     }
   }
+
+  node->proto = get_protocol(node->packet);
 
   //add to packet list
   node->prev = prev;
@@ -203,7 +227,59 @@ void refresh_pad() {
   } else if (current_line >= pad_length) {
     current_line = pad_length - 1;
   }
-   prefresh(pad, current_line, 0, 2, 0, 20, 80);
+   prefresh(pad, current_line, 0, 2, 0, 20, MAX_COLS - 1);
+}
+
+void print_pad_row(packet_node_t *node){
+  char buf[100];
+  mvwprintw(pad, pad_length, PACKET_NUM_INDEX, "%u", node->number);
+  mvwprintw(pad, pad_length, TIME_INDEX, "%lf", node->time_rel);
+
+  char src[120];
+  char dst[120];
+  uint8_t proto = node->proto;
+  if (proto == ARP) {
+    convert_addr_eth_to_str(node->ar_sha, src);
+    convert_addr_eth_to_str(node->ar_tha, dst);
+  } else if (proto == ICMP || TCP || UDP || IPV4) {
+    convert_addr_ip_int_to_str(node->src_ip, src);
+    convert_addr_ip_int_to_str(node->dst_ip, dst);
+  } else {
+    // TODO handle other cases
+  }
+
+  mvwprintw(pad, pad_length, SOURCE_INDEX, "%s", src);
+  mvwprintw(pad, pad_length, DESTINATION_INDEX, "%s", dst);
+
+  if (proto == ARP) {
+    sprintf(buf, "%s", "ARP");
+  } else if (proto == ICMP) {
+    sprintf(buf, "%s", "ICMP");
+  } else if (proto == TCP) {
+    sprintf(buf, "%s", "TCP");
+  } else if (proto == UDP) {
+    sprintf(buf, "%s", "UDP");
+  } else if (proto == IPV4) {
+    sprintf(buf, "%s", "IPv4");
+  } else {
+    sprintf(buf, "%s", "OTHER");
+  }
+
+  mvwprintw(pad, pad_length, PROTOCOL_INDEX, "%s", buf);
+  mvwprintw(pad, pad_length, LENGTH_INDEX, "%d", node->length);
+
+  pad_length += 1;
+}
+
+void update_pad() {
+  werase(pad);
+  pad_length = 0;
+  packet_node_t* node = packet_list;
+  while (node != NULL) {
+    print_pad_row(node);
+    node = node->next;
+  }
+  refresh_pad();
 }
 
 void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
@@ -241,57 +317,8 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
     return;
   }
 
-  // printf("Got packet of length %u\n", header->len);
-  // fflush(stdout);
-
-  // print_hdrs((uint8_t*)packet, header->len);
-
-  wmove(pad, pad_length, 2);
-  char buf[50];
-  struct timeval time_diff;
-  // timersub(&header->ts, &start_time, &time_diff);
-  
-  sprintf(buf, "%ld.%06ld", time_diff.tv_sec, time_diff.tv_usec);
-  waddstr(pad, buf);
-
-  wmove(pad, pad_length, 20);
-  sprintf(buf, "%d", header->len);
-  waddstr(pad, buf);
-
-  enum protocol proto = get_protocol(packet);
-  if (proto == ARP) {
-    sprintf(buf, "%s", "ARP");
-  } else if (proto == ICMP) {
-    sprintf(buf, "%s", "ICMP");
-  } else if (proto == TCP) {
-    sprintf(buf, "%s", "TCP");
-  } else if (proto == UDP) {
-    sprintf(buf, "%s", "UDP");
-  } else if (proto == IPV4) {
-    sprintf(buf, "%s", "IPv4");
-  } else {
-    sprintf(buf, "%s", "OTHER");
-  }
-  
-  wmove(pad, pad_length, 30);
-  // sprintf(buf, "%s", get_protocol(packet));
-  waddstr(pad, buf);
-
-  wmove(pad, pad_length, 45);
-  char src[120];
-  char dst[120];
-  get_source_dest(src, dst, packet);
-  waddstr(pad, src);
-  wmove(pad, pad_length, 70);
-  waddstr(pad, dst);
-
-
-
-  // int max_cols, max_rows;
-  // getmaxyx(pad, max_cols, max_rows);
-
-  refresh_pad();
-  pad_length += 1;
+  // Update pad display with new packet
+  update_pad();
 }
 
 void display_sniffer_header() {
@@ -299,11 +326,12 @@ void display_sniffer_header() {
   werase(win_title);
   wrefresh(win_title);
   // box(win_title, '|', '-');  
-  mvwprintw(win_title, 0, 0, "Time");
-  mvwprintw(win_title, 0, 20, "Length");
-  mvwprintw(win_title, 0, 30, "Protocol");
-  mvwprintw(win_title, 0, 45, "Source");
-  mvwprintw(win_title, 0, 70, "Destination");
+  mvwprintw(win_title, 0, PACKET_NUM_INDEX, "Number");
+  mvwprintw(win_title, 0, TIME_INDEX, "Time");
+  mvwprintw(win_title, 0, SOURCE_INDEX, "Source");
+  mvwprintw(win_title, 0, DESTINATION_INDEX, "Destination");
+  mvwprintw(win_title, 0, PROTOCOL_INDEX, "Protocol");
+  mvwprintw(win_title, 0, LENGTH_INDEX, "Length");
   wrefresh(win_title);
 }
 
@@ -382,16 +410,6 @@ void handle_signal(int signal) {
   exit(0);
 }
 
-void display_window() {
-
-}
-
-
-
-
-
-
-
 int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
   pcap_if_t* devices;  // all devices
@@ -453,8 +471,6 @@ int main(int argc, char* argv[]) {
 
   // Setup pad
   initialize_pad();
-
-  printf("pcap_open_live succeeded, starting capture loop\n");
 
   // -1 means to sniff until error occurs
   int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t *)&options);
