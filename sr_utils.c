@@ -118,6 +118,7 @@ void print_hdr_icmp(uint8_t *buf) {
   fprintf(stderr, "\tchecksum: %d\n", icmp_hdr->icmp_sum);
 }
 
+/*might need ntohs?*/
 /* Prints out UDP header fields */
 void print_hdr_udp(uint8_t *buf) {
   sr_udp_hdr_t *udp_hdr = (sr_udp_hdr_t *)(buf);
@@ -127,6 +128,24 @@ void print_hdr_udp(uint8_t *buf) {
   fprintf(stderr, "\tlen: %d\n", udp_hdr->udp_len);
   /* Keep checksum in NBO */
   fprintf(stderr, "\tchecksum: %d\n", udp_hdr->udp_sum);
+}
+
+
+void print_hdr_tcp(uint8_t *buf) {
+  sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)buf;
+
+  uint8_t data_offset = (tcp_hdr->tcp_offx2 >> 4);  /* high 4 bits */
+
+  fprintf(stderr, "TCP header:\n");
+  fprintf(stderr, "\tsrc: %u\n", ntohs(tcp_hdr->tcp_src));
+  fprintf(stderr, "\tdst: %u\n", ntohs(tcp_hdr->tcp_dst));
+  fprintf(stderr, "\tseq: %u\n", ntohl(tcp_hdr->tcp_seq));
+  fprintf(stderr, "\tack: %u\n", ntohl(tcp_hdr->tcp_ack));
+  fprintf(stderr, "\toffset: %u\n", data_offset);
+  fprintf(stderr, "\tflags: 0x%02x\n", tcp_hdr->tcp_flags);
+  fprintf(stderr, "\twindow: %u\n", ntohs(tcp_hdr->tcp_win));
+  fprintf(stderr, "\tchecksum: %u\n", ntohs(tcp_hdr->tcp_sum));
+  fprintf(stderr, "\turgptr: %u\n", ntohs(tcp_hdr->tcp_urp));
 }
 
 
@@ -181,13 +200,20 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
       else
         print_hdr_icmp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     } else if(ip_proto == ip_protocol_udp) { /* UDP */
-      minlength += sizeof(sr_udp_hdr_t);
-      if (length < minlength)
-        fprintf(stderr, "Failed to print UDP header, insufficient length\n");
-      else
-        print_hdr_udp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        minlength += sizeof(sr_udp_hdr_t);
+        if (length < minlength)
+          fprintf(stderr, "Failed to print UDP header, insufficient length\n");
+        else
+          print_hdr_udp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+    } else if (ip_proto == ip_protocol_tcp) { /* TCP */
+        minlength += sizeof(sr_tcp_hdr_t);
+        if (length < minlength)
+          fprintf(stderr, "Failed to print TCP header, insufficient length\n");
+        else
+          print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     }
   }
+
   else if (ethtype == ethertype_arp) { /* ARP */
     minlength += sizeof(sr_arp_hdr_t);
     if (length < minlength)

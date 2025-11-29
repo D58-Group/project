@@ -14,8 +14,14 @@ class SnifferTopo(Topo):
 topos = {'sniffer': SnifferTopo}
 
 #run with: 
-#sudo mn --custom network.py --topo sniffer --mac --switch ovsk --controller none
+#sudo mn --custom network.py --topo sniffer --mac --switch ovsbr --controller none
 
 
 #to run our sniffer: 
-#mininet> sn ./packet_sniffer
+#sn /home/mininet/project/packet_sniffer -i h1-eth0
+
+#to run in background: 
+#sn /home/mininet/project/packet_sniffer -i h1-eth0 &
+
+#to flush
+#h1 ps aux | grep packet_sniffer

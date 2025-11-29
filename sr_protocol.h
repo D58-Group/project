@@ -102,14 +102,14 @@ struct sr_icmp_t3_hdr {
 typedef struct sr_icmp_t3_hdr sr_icmp_t3_hdr_t;
 
 
-struct sr_udp_hdr
-{
+struct sr_udp_hdr {
   uint16_t udp_src;
   uint16_t udp_dst;
   uint16_t udp_len;
   uint16_t udp_sum;
-}__attribute__((packed)) ;
+} __attribute__ ((packed));
 typedef struct sr_udp_hdr sr_udp_hdr_t;
+
 
 /*
  * Structure of an internet header, naked of options.
@@ -157,6 +157,7 @@ typedef struct sr_ethernet_hdr sr_ethernet_hdr_t;
 
 enum sr_ip_protocol {
   ip_protocol_icmp = 0x0001,
+  ip_protocol_tcp  = 0x0006,
   ip_protocol_udp = 0x0011
 };
 
@@ -191,5 +192,20 @@ struct sr_arp_hdr
 typedef struct sr_arp_hdr sr_arp_hdr_t;
 
 #define sr_IFACE_NAMELEN 32
+
+
+struct sr_tcp_hdr {
+  uint16_t tcp_src;    /* source port */
+  uint16_t tcp_dst;    /* dest port   */
+  uint32_t tcp_seq;    /* sequence    */
+  uint32_t tcp_ack;    /* ack number  */
+  uint8_t  tcp_offx2;  /* data offset (high 4 bits) + reserved (low 4 bits) */
+  uint8_t  tcp_flags;  /* flags       */
+  uint16_t tcp_win;    /* window      */
+  uint16_t tcp_sum;    /* checksum    */
+  uint16_t tcp_urp;    /* urgent ptr  */
+} __attribute__ ((packed));
+typedef struct sr_tcp_hdr sr_tcp_hdr_t;
+
 
 #endif /* -- SR_PROTOCOL_H -- */
