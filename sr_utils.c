@@ -80,26 +80,47 @@ void print_hdr_eth(uint8_t *buf) {
 /* Prints out fields in IP header. */
 void print_hdr_ip(uint8_t *buf) {
   sr_ip_hdr_t *iphdr = (sr_ip_hdr_t *)(buf);
+
+  uint8_t  ihl_words     = iphdr->ip_hl;
+  uint16_t total_len     = ntohs(iphdr->ip_len);
+  uint32_t header_bytes  = (uint32_t)ihl_words * 4;
+  uint32_t payload_bytes = (total_len > header_bytes) ? (total_len - header_bytes) : 0;
+
+  uint8_t dscp = iphdr->ip_tos >> 2;
+  uint8_t ecn  = iphdr->ip_tos & 0x3;
+
+  uint16_t off = ntohs(iphdr->ip_off);
+  int flag_reserved = (off & IP_RF) ? 1 : 0;
+  int flag_df       = (off & IP_DF) ? 1 : 0;
+  int flag_mf       = (off & IP_MF) ? 1 : 0;
+  uint16_t frag_off = off & IP_OFFMASK;
+
+  const char *proto_name = "UNKNOWN";
+  switch (iphdr->ip_p) {
+    case ip_protocol_icmp: proto_name = "ICMP"; break;
+    case ip_protocol_tcp:  proto_name = "TCP";  break;
+    case ip_protocol_udp:  proto_name = "UDP";  break;
+  }
+
   fprintf(stderr, "IP header:\n");
   fprintf(stderr, "\tversion: %d\n", iphdr->ip_v);
-  fprintf(stderr, "\theader length: %d\n", iphdr->ip_hl);
-  fprintf(stderr, "\ttype of service: %d\n", iphdr->ip_tos);
-  fprintf(stderr, "\tlength: %d\n", ntohs(iphdr->ip_len));
-  fprintf(stderr, "\tid: %d\n", ntohs(iphdr->ip_id));
+  fprintf(stderr, "\theader length (words): %d\n", ihl_words);
+  fprintf(stderr, "\theader length (bytes): %u\n", (unsigned)header_bytes);
+  fprintf(stderr, "\tDSCP: %u\n", dscp);
+  fprintf(stderr, "\tECN: %u\n", ecn);
+  fprintf(stderr, "\ttotal length: %u\n", (unsigned)total_len);
+  fprintf(stderr, "\tpayload length: %u\n", (unsigned)payload_bytes);
+  fprintf(stderr, "\tid: %u\n", (unsigned)ntohs(iphdr->ip_id));
 
-  if (ntohs(iphdr->ip_off) & IP_DF)
-    fprintf(stderr, "\tfragment flag: DF\n");
-  else if (ntohs(iphdr->ip_off) & IP_MF)
-    fprintf(stderr, "\tfragment flag: MF\n");
-  else if (ntohs(iphdr->ip_off) & IP_RF)
-    fprintf(stderr, "\tfragment flag: R\n");
+  fprintf(stderr, "\tflags: R=%d, DF=%d, MF=%d\n",
+          flag_reserved, flag_df, flag_mf);
+  fprintf(stderr, "\tfragment offset: %u\n", (unsigned)frag_off);
+  fprintf(stderr, "\tTTL: %u\n", (unsigned)iphdr->ip_ttl);
+  fprintf(stderr, "\tprotocol: %u (%s)\n",
+          (unsigned)iphdr->ip_p, proto_name);
 
-  fprintf(stderr, "\tfragment offset: %d\n", ntohs(iphdr->ip_off) & IP_OFFMASK);
-  fprintf(stderr, "\tTTL: %d\n", iphdr->ip_ttl);
-  fprintf(stderr, "\tprotocol: %d\n", iphdr->ip_p);
-
-  /*Keep checksum in NBO*/
-  fprintf(stderr, "\tchecksum: %d\n", iphdr->ip_sum);
+  /* Keep checksum in NBO, but show as hex */
+  fprintf(stderr, "\tchecksum: 0x%04x\n", ntohs(iphdr->ip_sum));
 
   fprintf(stderr, "\tsource: ");
   print_addr_ip_int(ntohl(iphdr->ip_src));
@@ -107,6 +128,7 @@ void print_hdr_ip(uint8_t *buf) {
   fprintf(stderr, "\tdestination: ");
   print_addr_ip_int(ntohl(iphdr->ip_dst));
 }
+
 
 /* Prints out ICMP header fields */
 void print_hdr_icmp(uint8_t *buf) {
@@ -118,38 +140,50 @@ void print_hdr_icmp(uint8_t *buf) {
   fprintf(stderr, "\tchecksum: %d\n", icmp_hdr->icmp_sum);
 }
 
-/*might need ntohs?*/
-/* Prints out UDP header fields */
+
 void print_hdr_udp(uint8_t *buf) {
   sr_udp_hdr_t *udp_hdr = (sr_udp_hdr_t *)(buf);
   fprintf(stderr, "UDP header:\n");
-  fprintf(stderr, "\tsrc: %d\n", udp_hdr->udp_src);
-  fprintf(stderr, "\tdst: %d\n", udp_hdr->udp_dst);
-  fprintf(stderr, "\tlen: %d\n", udp_hdr->udp_len);
-  /* Keep checksum in NBO */
-  fprintf(stderr, "\tchecksum: %d\n", udp_hdr->udp_sum);
+  //host order
+  fprintf(stderr, "\tsrc: %u\n", (unsigned)ntohs(udp_hdr->udp_src));
+  fprintf(stderr, "\tdst: %u\n", (unsigned)ntohs(udp_hdr->udp_dst));
+  fprintf(stderr, "\tlen: %u\n", (unsigned)ntohs(udp_hdr->udp_len));
+  //NBO-hex
+  fprintf(stderr, "\tchecksum: 0x%04x\n", ntohs(udp_hdr->udp_sum));
 }
 
 
 void print_hdr_tcp(uint8_t *buf) {
   sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)buf;
 
-  uint8_t data_offset = (tcp_hdr->tcp_offx2 >> 4);  /* high 4 bits */
+  uint8_t data_offset = (tcp_hdr->tcp_offx2 >> 4);  
+  uint8_t flags       = tcp_hdr->tcp_flags;
 
   fprintf(stderr, "TCP header:\n");
-  fprintf(stderr, "\tsrc: %u\n", ntohs(tcp_hdr->tcp_src));
-  fprintf(stderr, "\tdst: %u\n", ntohs(tcp_hdr->tcp_dst));
-  fprintf(stderr, "\tseq: %u\n", ntohl(tcp_hdr->tcp_seq));
-  fprintf(stderr, "\tack: %u\n", ntohl(tcp_hdr->tcp_ack));
-  fprintf(stderr, "\toffset: %u\n", data_offset);
-  fprintf(stderr, "\tflags: 0x%02x\n", tcp_hdr->tcp_flags);
-  fprintf(stderr, "\twindow: %u\n", ntohs(tcp_hdr->tcp_win));
-  fprintf(stderr, "\tchecksum: %u\n", ntohs(tcp_hdr->tcp_sum));
-  fprintf(stderr, "\turgptr: %u\n", ntohs(tcp_hdr->tcp_urp));
+  fprintf(stderr, "\tsrc: %u\n", (unsigned)ntohs(tcp_hdr->tcp_src));
+  fprintf(stderr, "\tdst: %u\n", (unsigned)ntohs(tcp_hdr->tcp_dst));
+  fprintf(stderr, "\tseq: %u\n", (unsigned)ntohl(tcp_hdr->tcp_seq));
+  fprintf(stderr, "\tack: %u\n", (unsigned)ntohl(tcp_hdr->tcp_ack));
+  fprintf(stderr, "\toffset (words): %u\n", (unsigned)data_offset);
+  fprintf(stderr, "\toffset (bytes): %u\n", (unsigned)(data_offset * 4));
+
+  fprintf(stderr, "\tflags: 0x%02x (", flags);
+  int first = 1;
+  if (flags & 0x01) { fprintf(stderr, "%sFIN", first ? "" : "|"); first = 0; }
+  if (flags & 0x02) { fprintf(stderr, "%sSYN", first ? "" : "|"); first = 0; }
+  if (flags & 0x04) { fprintf(stderr, "%sRST", first ? "" : "|"); first = 0; }
+  if (flags & 0x08) { fprintf(stderr, "%sPSH", first ? "" : "|"); first = 0; }
+  if (flags & 0x10) { fprintf(stderr, "%sACK", first ? "" : "|"); first = 0; }
+  if (flags & 0x20) { fprintf(stderr, "%sURG", first ? "" : "|"); first = 0; }
+  if (first) fprintf(stderr, "none");
+  fprintf(stderr, ")\n");
+
+  fprintf(stderr, "\twindow: %u\n", (unsigned)ntohs(tcp_hdr->tcp_win));
+  fprintf(stderr, "\tchecksum: 0x%04x\n", ntohs(tcp_hdr->tcp_sum));
+  fprintf(stderr, "\turgptr: %u\n", (unsigned)ntohs(tcp_hdr->tcp_urp));
 }
 
 
-/* Prints out fields in ARP header */
 void print_hdr_arp(uint8_t *buf) {
   sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(buf);
   fprintf(stderr, "ARP header\n");
@@ -168,7 +202,24 @@ void print_hdr_arp(uint8_t *buf) {
   print_addr_eth(arp_hdr->ar_tha);
   fprintf(stderr, "\ttarget ip address: ");
   print_addr_ip_int(ntohl(arp_hdr->ar_tip));
+
+  /* extra Wireshark-style summary */
+  char sip[INET_ADDRSTRLEN];
+  char tip[INET_ADDRSTRLEN];
+  struct in_addr a_sip = { .s_addr = arp_hdr->ar_sip };
+  struct in_addr a_tip = { .s_addr = arp_hdr->ar_tip };
+  inet_ntop(AF_INET, &a_sip, sip, sizeof(sip));
+  inet_ntop(AF_INET, &a_tip, tip, sizeof(tip));
+
+  uint16_t op = ntohs(arp_hdr->ar_op);
+  if (op == arp_op_request) {
+    fprintf(stderr, "\t[who has %s? tell %s]\n", tip, sip);
+  } else if (op == arp_op_reply) {
+    fprintf(stderr, "\t[%s is-at ", sip);
+    print_addr_eth(arp_hdr->ar_sha); /* this already prints newline */
+  }
 }
+
 
 /* Prints out all possible headers, starting from Ethernet */
 void print_hdrs(uint8_t *buf, uint32_t length) {
@@ -216,10 +267,15 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
           int tcp_header_length = tcp_data_offset * 4;
           if (length > sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length) {
             fprintf(stderr, "\nTCP payload\n");
+            size_t payload_len =
+              length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
+
             fprintf(stderr, "Header length: %d\n", tcp_header_length);
-            fprintf(stderr, "Payload length: %ld\n", length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t));
-            fwrite(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length, 1,
-                 length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t), stderr);
+            fprintf(stderr, "Payload length: %zu\n", payload_len);
+
+            fwrite(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length,
+              1, payload_len, stderr);
+
             fwrite("\n", 1, 1, stderr);
           }
         }
@@ -237,4 +293,27 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
     fprintf(stderr, "Unrecognized Ethernet Type: %d\n", ethtype);
   }
 }
+
+
+char *format_hdrs_to_string(uint8_t *buf, uint32_t length) {
+    char *output = NULL;
+    size_t out_size = 0;
+
+    FILE *mem = open_memstream(&output, &out_size);
+    if (!mem) return NULL;
+
+    //redirects prints 
+    FILE *saved = stderr;
+    stderr = mem;
+
+    print_hdrs(buf, length);   
+
+    //put it back 
+    fflush(mem);
+    stderr = saved;
+    fclose(mem); 
+
+    return output; 
+}
+
 

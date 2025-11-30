@@ -48,4 +48,7 @@ void print_hdr_udp(uint8_t *buf);
 /* prints all headers, starting from eth */
 void print_hdrs(uint8_t *buf, uint32_t length);
 
+//used to put the print_hdrs output in a string
+char *format_hdrs_to_string(uint8_t *buf, uint32_t length);
+
 #endif /* -- SR_UTILS_H -- */
