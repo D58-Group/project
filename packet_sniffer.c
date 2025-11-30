@@ -26,9 +26,11 @@ WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
 WINDOW *info_pad = NULL;
 WINDOW *win_key = NULL;
+WINDOW *stats = NULL;
 int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
+int current_info_line = 0;
 pthread_t key_event_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
@@ -37,7 +39,8 @@ const int DESTINATION_INDEX = 60;
 const int PROTOCOL_INDEX = 90;
 const int LENGTH_INDEX = 105;
 const int PAD_ROWS_TO_DISPLAY = 20;
-const int INFO_PAD_ROWS = 20;
+const int INFO_ROWS_TO_DISPLAY = 20;
+const int INFO_PAD_ROWS = 70;
 const int INFO_PAD_COLS = 80;
 const int TITLE_PAD_ROWS = 1;
 const int TITLE_PAD_X = 0;
@@ -48,7 +51,7 @@ const int INFO_PAD_X = 0;
 const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
 const int KEY_X = 80;
 const int KEY_Y = INFO_PAD_Y;
-const int KEY_ROWS = 13;
+const int KEY_ROWS = 15;
 const int KEY_COLS = MAX_COLS - KEY_X;
 
 /* Command Line Argument Functions */
@@ -581,28 +584,32 @@ void display_key_window() {
   wrefresh(win_key);
   box(win_key, '|', '-');  
   mvwprintw(win_key, 0, 0, "KEY COMMANDS");
-  mvwprintw(win_key, 1, 1, "UP KEY");
-  mvwprintw(win_key, 1, 12, "Scroll Up");
-  mvwprintw(win_key, 2, 1, "DOWN KEY");
-  mvwprintw(win_key, 2, 12, "Scroll Down");
-  mvwprintw(win_key, 3, 1, "1");
-  mvwprintw(win_key, 3, 12, "Sort by Number");
-  mvwprintw(win_key, 4, 1, "2");
-  mvwprintw(win_key, 4, 12, "Sort by Time");
-  mvwprintw(win_key, 5, 1, "3");
-  mvwprintw(win_key, 5, 12, "Sort by Source");
-  mvwprintw(win_key, 6, 1, "4");
-  mvwprintw(win_key, 6, 12, "Sort by Destination");
-  mvwprintw(win_key, 7, 1, "5");
-  mvwprintw(win_key, 7, 12, "Sort by Protocol");
-  mvwprintw(win_key, 8, 1, "6");
-  mvwprintw(win_key, 8, 12, "Sort by Length");
-  mvwprintw(win_key, 9, 1, "7");
-  mvwprintw(win_key, 9, 12, "Sort by Packet Info");
-  mvwprintw(win_key, 10, 1, "a");
-  mvwprintw(win_key, 10, 12, "Sort in Ascending Order");
-  mvwprintw(win_key, 11, 1, "d");
-  mvwprintw(win_key, 11, 12, "Sort in Descending Order");
+  mvwprintw(win_key, 1, 2, "UP KEY");
+  mvwprintw(win_key, 1, 13, "Scroll Up");
+  mvwprintw(win_key, 2, 2, "DOWN KEY");
+  mvwprintw(win_key, 2, 13, "Scroll Down");
+  mvwprintw(win_key, 3, 2, "1");
+  mvwprintw(win_key, 3, 13, "Sort by Number");
+  mvwprintw(win_key, 4, 2, "2");
+  mvwprintw(win_key, 4, 13, "Sort by Time");
+  mvwprintw(win_key, 5, 2, "3");
+  mvwprintw(win_key, 5, 13, "Sort by Source");
+  mvwprintw(win_key, 6, 2, "4");
+  mvwprintw(win_key, 6, 13, "Sort by Destination");
+  mvwprintw(win_key, 7, 2, "5");
+  mvwprintw(win_key, 7, 13, "Sort by Protocol");
+  mvwprintw(win_key, 8, 2, "6");
+  mvwprintw(win_key, 8, 13, "Sort by Length");
+  mvwprintw(win_key, 9, 2, "7");
+  mvwprintw(win_key, 9, 13, "Sort by Packet Info");
+  mvwprintw(win_key, 10, 2, "a");
+  mvwprintw(win_key, 10, 13, "Sort in Ascending Order");
+  mvwprintw(win_key, 11, 2, "d");
+  mvwprintw(win_key, 11, 13, "Sort in Descending Order");
+  mvwprintw(win_key, 12, 2, "LEFT KEY");
+  mvwprintw(win_key, 12, 13, "Scroll Up on Packet Info");
+  mvwprintw(win_key, 13, 2, "RIGHT KEY");
+  mvwprintw(win_key, 13, 13, "Scroll Down on Packet Info");
   wrefresh(win_key);
 }
 
@@ -617,8 +624,16 @@ void display_header_info() {
     return;
   } 
 
-  mvwprintw(info_pad, 1, 0, "%s", node->info);
-  prefresh(info_pad, 0, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_PAD_ROWS, INFO_PAD_COLS - 1);
+  current_info_line = 0;
+  werase(info_pad);
+  mvwprintw(info_pad, 0, 2, "PACKET INFO for Packet Number %d", node->number);
+  mvwprintw(info_pad, 2, 0, "%s", node->info);
+
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+}
+
+void refresh_info_pad() {
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
 }
 
 void create_header_info_pad() {
@@ -633,8 +648,9 @@ void create_header_info_pad() {
   }
 
   // Packet Info title
+  werase(info_pad);
   mvwprintw(info_pad, 0, 0, "PACKET INFO");
-  prefresh(info_pad, 0, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_PAD_ROWS, INFO_PAD_COLS - 1);
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
 }
 
 /* ncurses dynamic terminal */
@@ -785,6 +801,22 @@ void *handle_key_event(void *arg) {
         current_sort_ascending = 0;
         sort_packet_list(current_sort_key, current_sort_ascending);
         update_after_key_press();
+        break;
+      case KEY_LEFT:
+        if (current_info_line <= 0) {
+          current_info_line = 0;
+        } else {
+          current_info_line -= 1;
+        }
+        refresh_info_pad();
+        break;
+      case KEY_RIGHT:
+        if (current_info_line >= INFO_PAD_ROWS - 1) {
+          current_info_line = INFO_PAD_ROWS - PAD_ROWS_TO_DISPLAY;
+        } else {
+          current_info_line += 1;
+        }
+        refresh_info_pad();
         break;
       default:
         break;
