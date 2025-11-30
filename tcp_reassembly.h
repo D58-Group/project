@@ -25,14 +25,13 @@ struct tcp_stream {
 
 tcp_segment_t* create_tcp_segment(uint32_t, uint32_t, uint8_t*);
 void insert_tcp_segment(tcp_stream_t*, tcp_segment_t*);
-
 tcp_stream_t* create_tcp_stream(uint32_t, uint32_t, uint16_t, uint16_t,
                                 uint32_t);
 tcp_stream_t* get_tcp_stream(uint32_t, uint32_t, uint16_t, uint16_t);
-
 void handle_tcp_packet(uint8_t*, uint32_t);
-
 void print_tcp_stream(tcp_stream_t*);
 void print_all_tcp_streams();
+void print_http_header(uint8_t*, uint32_t);
+void try_reassemble_http(tcp_stream_t*);
 
 #endif
