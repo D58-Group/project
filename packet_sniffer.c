@@ -16,7 +16,7 @@
 #include "sr_protocol.h"
 
 #define MAX_ROWS 10000
-#define MAX_COLS 150
+#define MAX_COLS 120
 
 /* Global Variables */
 packet_node_t *packet_list = NULL;
@@ -25,6 +25,7 @@ int pad_length = 0;
 WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
 WINDOW *info_pad = NULL;
+WINDOW *win_key = NULL;
 int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
@@ -37,7 +38,7 @@ const int PROTOCOL_INDEX = 90;
 const int LENGTH_INDEX = 105;
 const int PAD_ROWS_TO_DISPLAY = 20;
 const int INFO_PAD_ROWS = 20;
-const int INFO_PAD_COLS = 150;
+const int INFO_PAD_COLS = 80;
 const int TITLE_PAD_ROWS = 1;
 const int TITLE_PAD_X = 0;
 const int TITLE_PAD_Y = 0;
@@ -45,6 +46,10 @@ const int PAD_X = 0;
 const int PAD_Y = 2;
 const int INFO_PAD_X = 0;
 const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
+const int KEY_X = 80;
+const int KEY_Y = INFO_PAD_Y;
+const int KEY_ROWS = 13;
+const int KEY_COLS = MAX_COLS - KEY_X;
 
 /* Command Line Argument Functions */
 
@@ -569,6 +574,37 @@ void display_sniffer_header() {
   wrefresh(win_title);
 }
 
+void display_key_window() {
+  // Print list of key commands
+  win_key = newwin(KEY_ROWS, KEY_COLS, KEY_Y, KEY_X);
+  werase(win_key);
+  wrefresh(win_key);
+  box(win_key, '|', '-');  
+  mvwprintw(win_key, 0, 0, "KEY COMMANDS");
+  mvwprintw(win_key, 1, 1, "UP KEY");
+  mvwprintw(win_key, 1, 12, "Scroll Up");
+  mvwprintw(win_key, 2, 1, "DOWN KEY");
+  mvwprintw(win_key, 2, 12, "Scroll Down");
+  mvwprintw(win_key, 3, 1, "1");
+  mvwprintw(win_key, 3, 12, "Sort by Number");
+  mvwprintw(win_key, 4, 1, "2");
+  mvwprintw(win_key, 4, 12, "Sort by Time");
+  mvwprintw(win_key, 5, 1, "3");
+  mvwprintw(win_key, 5, 12, "Sort by Source");
+  mvwprintw(win_key, 6, 1, "4");
+  mvwprintw(win_key, 6, 12, "Sort by Destination");
+  mvwprintw(win_key, 7, 1, "5");
+  mvwprintw(win_key, 7, 12, "Sort by Protocol");
+  mvwprintw(win_key, 8, 1, "6");
+  mvwprintw(win_key, 8, 12, "Sort by Length");
+  mvwprintw(win_key, 9, 1, "7");
+  mvwprintw(win_key, 9, 12, "Sort by Packet Info");
+  mvwprintw(win_key, 10, 1, "a");
+  mvwprintw(win_key, 10, 12, "Sort in Ascending Order");
+  mvwprintw(win_key, 11, 1, "d");
+  mvwprintw(win_key, 11, 12, "Sort in Descending Order");
+  wrefresh(win_key);
+}
 
 void display_header_info() {
   // Print header information for current line
@@ -581,7 +617,7 @@ void display_header_info() {
     return;
   } 
 
-  mvwprintw(info_pad, 0, 0, "%s", node->info);
+  mvwprintw(info_pad, 1, 0, "%s", node->info);
   prefresh(info_pad, 0, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_PAD_ROWS, INFO_PAD_COLS - 1);
 }
 
@@ -597,7 +633,7 @@ void create_header_info_pad() {
   }
 
   // Packet Info title
-  mvwprintw(info_pad, 0, 0, "Packet info");
+  mvwprintw(info_pad, 0, 0, "PACKET INFO");
   prefresh(info_pad, 0, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_PAD_ROWS, INFO_PAD_COLS - 1);
 }
 
@@ -618,6 +654,9 @@ void initialize_windows() {
 
   // Initialize pad with header info
   create_header_info_pad();
+
+  // Initialize window for keyboard legend
+  display_key_window();
 }
 
 void update_after_key_press() {
@@ -642,6 +681,10 @@ void delete_windows() {
   if (info_pad != NULL) {
     werase(info_pad);
     delwin(info_pad);
+  }
+  if (win_key != NULL) {
+    werase(win_key);
+    delwin(win_key);
   }
   endwin();
 }
