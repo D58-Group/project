@@ -8,9 +8,8 @@
 #include "sorting.h"
 #include <arpa/inet.h> 
 #include "sr_protocol.h"
-
-
-
+#include <math.h>
+#include <pthread.h>
 
 
 struct packet_node {
@@ -35,6 +34,8 @@ typedef struct packet_node packet_node_t;
 
 packet_node_t* packet_list = NULL;
 
+pthread_mutex_t packet_list_lock = PTHREAD_MUTEX_INITIALIZER;
+
 char* usage =
     "Usage: "
     "%s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
@@ -51,6 +52,143 @@ struct options {
   char* protocol;
   int duration;
 } typedef options_t;
+
+typedef enum {
+    SORT_BY_NUMBER,
+    SORT_BY_TIME,
+    SORT_BY_SRC,
+    SORT_BY_DST,
+    SORT_BY_PROTO,
+    SORT_BY_LENGTH,
+    SORT_BY_INFO
+} sort_key_t;
+
+static sort_key_t current_sort_key = SORT_BY_NUMBER;
+static int current_sort_ascending  = 1;  
+
+static int packet_list_count(packet_node_t *head) {
+    int n = 0;
+    while (head) {
+        n++;
+        head = head->next;
+    }
+    return n;
+}
+
+static void packet_list_to_array(packet_node_t *head,
+                                 packet_node_t **arr,
+                                 int n) {
+    int i = 0;
+    while (head && i < n) {
+        arr[i++] = head;
+        head = head->next;
+    }
+}
+
+static packet_node_t *array_to_packet_list(packet_node_t **arr, int n) {
+    if (n == 0) return NULL;
+
+    for (int i = 0; i < n; i++) {
+        packet_node_t *prev = (i > 0)     ? arr[i-1] : NULL;
+        packet_node_t *next = (i < n - 1) ? arr[i+1] : NULL;
+        arr[i]->prev = prev;
+        arr[i]->next = next;
+    }
+    return arr[0];  
+}
+
+static int cmp_double(double a, double b) {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+static int cmp_uint32(uint32_t a, uint32_t b) {
+    if (a < b) return -1;
+    if (a > b) return 1;
+    return 0;
+}
+
+
+static int packet_node_cmp(const void *pa, const void *pb) {
+    const packet_node_t *a = *(const packet_node_t * const *)pa;
+    const packet_node_t *b = *(const packet_node_t * const *)pb;
+
+    int result = 0;
+
+    switch (current_sort_key) {
+        case SORT_BY_NUMBER:
+            if      (a->number < b->number) result = -1;
+            else if (a->number > b->number) result = 1;
+            else result = 0;
+            break;
+
+        case SORT_BY_TIME:
+            result = cmp_double(a->time_rel, b->time_rel);
+            break;
+
+        case SORT_BY_SRC:
+            result = cmp_uint32(a->src_ip, b->src_ip);
+            break;
+
+        case SORT_BY_DST:
+            result = cmp_uint32(a->dst_ip, b->dst_ip);
+            break;
+
+        case SORT_BY_PROTO:
+            if      (a->proto < b->proto) result = -1;
+            else if (a->proto > b->proto) result = 1;
+            else result = 0;
+            break;
+
+        case SORT_BY_LENGTH:
+            if      (a->length < b->length) result = -1;
+            else if (a->length > b->length) result = 1;
+            else result = 0;
+            break;
+
+        case SORT_BY_INFO:
+            if (!a->info && !b->info) result = 0;
+            else if (!a->info)        result = -1;
+            else if (!b->info)        result = 1;
+            else                      result = strcmp(a->info, b->info);
+            break;
+    }
+
+    if (!current_sort_ascending)
+        result = -result;
+
+    return result;
+}
+
+void sort_packet_list(sort_key_t key, int ascending) {
+    pthread_mutex_lock(&packet_list_lock);
+
+    int n = packet_list_count(packet_list);
+    if (n <= 1) {
+        pthread_mutex_unlock(&packet_list_lock);
+        return;
+    }
+
+    packet_node_t **arr = malloc(n * sizeof(packet_node_t *));
+    if (!arr) {
+        pthread_mutex_unlock(&packet_list_lock);
+        return;
+    }
+
+    packet_list_to_array(packet_list, arr, n);
+
+    current_sort_key = key;
+    current_sort_ascending = ascending ? 1 : 0;
+
+    qsort(arr, n, sizeof(packet_node_t *), packet_node_cmp);
+
+    packet_list = array_to_packet_list(arr, n);
+
+    free(arr);
+
+    pthread_mutex_unlock(&packet_list_lock);
+}
 
 options_t parse_options(int argc, char* argv[]) {
   if (argc == 1) {
@@ -159,6 +297,7 @@ packet_node_t* add_packet_node(const uint8_t* packet,
 }
 
 void delete_packet_nodes(packet_node_t* node) {
+  pthread_mutex_lock(&packet_list_lock);
   while (node) {
     packet_node_t* next = node->next;
     free(node->packet);
@@ -167,6 +306,7 @@ void delete_packet_nodes(packet_node_t* node) {
     free(node);
     node = next;
   }
+  pthread_mutex_unlock(&packet_list_lock);
 }
 
 
@@ -220,8 +360,10 @@ void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
   // add to packet list 
+  pthread_mutex_lock(&packet_list_lock);
   packet_node_t* new_node =
     add_packet_node(packet, header, NULL, packet_list, packet_count, t);
+  pthread_mutex_unlock(&packet_list_lock);
 
 
   if (!new_node) {
