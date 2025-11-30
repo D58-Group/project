@@ -602,7 +602,7 @@ void create_header_info_pad() {
 }
 
 /* ncurses dynamic terminal */
-void initialize_pad() {
+void initialize_windows() {
   // Initialize packets pad
   pad = newpad(MAX_ROWS, MAX_COLS);
   wattron(pad, COLOR_PAIR(2));
@@ -629,49 +629,18 @@ void update_after_key_press() {
     display_header_info();
 }
 
-void *handle_key_event(void *arg) {
-  int key;
-  while(1) {
-    key = wgetch(stdscr);
-    switch(key) {
-      case KEY_UP:
-        if (current_line <= 0) {
-          current_line = 0;
-        } else {
-          previous_line = current_line;
-          current_line -= 1;
-        }
-        update_after_key_press();
-        break;
-      case KEY_DOWN:
-        if (current_line >= MAX_ROWS) {
-          current_line = MAX_ROWS;
-        } else {
-          previous_line = current_line;
-          current_line += 1;
-        }
-        update_after_key_press();
-        break;
-      case 's':
-        sort_packet_list(SORT_BY_TIME, 0);
-        current_line = 0;
-        refresh_pad();
-        display_header_info();
-        break;
-      default:
-        break;
-    }
-  }
-}
 
 void delete_windows() {
   if (pad != NULL) {
+    werase(pad);
     delwin(pad);
   }
   if (win_title != NULL) {
+    werase(win_title);
     delwin(win_title);
   }
   if (info_pad != NULL) {
+    werase(info_pad);
     delwin(info_pad);
   }
   endwin();
@@ -696,9 +665,99 @@ void close_program() {
   exit(0);
 }
 
+void *handle_key_event(void *arg) {
+  int key;
+  while(1) {
+    key = wgetch(stdscr);
+    switch(key) {
+      case KEY_UP:
+        if (current_line <= 0) {
+          current_line = 0;
+        } else {
+          previous_line = current_line;
+          current_line -= 1;
+        }
+        update_after_key_press();
+        break;
+      case KEY_DOWN:
+        if (current_line >= MAX_ROWS) {
+          current_line = MAX_ROWS;
+        } else {
+          previous_line = current_line;
+          current_line += 1;
+        }
+        update_after_key_press();
+        break;
+      case '1':
+        current_sort_key = SORT_BY_NUMBER;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '2':
+        current_sort_key = SORT_BY_TIME;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '3':
+        current_sort_key = SORT_BY_SRC;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '4':
+        current_sort_key = SORT_BY_DST;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '5':
+        current_sort_key = SORT_BY_PROTO;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '6':
+        current_sort_key = SORT_BY_LENGTH;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '7':
+        current_sort_key = SORT_BY_INFO;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'a':
+        current_sort_ascending = 1;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'A':
+        current_sort_ascending = 1;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'd':
+        current_sort_ascending = 0;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'D':
+        current_sort_ascending = 0;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      default:
+        break;
+    }
+  }
+}
+
 /* Handling Ctrl-C */
 void handle_signal(int signal) {
  close_program();
+}
+
+void handle_resize_signal(int signal) {
+  delete_windows();
+  initialize_windows();
+  update_after_key_press();
 }
 
 int main(int argc, char* argv[]) {
@@ -752,6 +811,9 @@ int main(int argc, char* argv[]) {
   // Handle ctrl-c
   signal(SIGINT, handle_signal);
 
+  // Handle resizing
+  signal(SIGWINCH, handle_resize_signal);
+
   pthread_create(&key_event_thread, NULL, handle_key_event, NULL);
   
   // Initiate ncurses
@@ -765,8 +827,8 @@ int main(int argc, char* argv[]) {
   cbreak();
   keypad(stdscr, TRUE);
 
-  // Setup pad
-  initialize_pad();
+  // Setup windows
+  initialize_windows();
 
   // -1 means to sniff until error occurs
   int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t *)&options);
