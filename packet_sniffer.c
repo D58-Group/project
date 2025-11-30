@@ -1,37 +1,16 @@
+#include "packet_sniffer.h"
+
+#include <arpa/inet.h>
 #include <errno.h>
 #include <ncurses.h>
 #include <pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sr_utils.h"
+
 #include "sorting.h"
-#include <arpa/inet.h> 
 #include "sr_protocol.h"
-
-
-
-
-
-struct packet_node {
-  uint8_t *packet;
-  struct pcap_pkthdr hdr;      
-  struct packet_node *prev;
-  struct packet_node *next;
-
-  unsigned int number;         
-  double time_rel;             
-
-  uint32_t src_ip;             
-  uint32_t dst_ip;
-  uint8_t  proto;              
-
-  uint32_t length;             
-  
-  char *info; 
-
-};
-typedef struct packet_node packet_node_t;
+#include "sr_utils.h"
 
 packet_node_t* packet_list = NULL;
 
@@ -44,13 +23,6 @@ char* usage =
     "  -p <protocol>    Protocol to filter (default=any)\n"
     "  -t <duration>    Duration to sniff in seconds (default=unlimited)\n"
     "  -h               View usage information\n";
-
-struct options {
-  char* interface;
-  char* filename;
-  char* protocol;
-  int duration;
-} typedef options_t;
 
 options_t parse_options(int argc, char* argv[]) {
   if (argc == 1) {
