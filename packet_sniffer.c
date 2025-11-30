@@ -27,6 +27,7 @@ WINDOW *win_title = NULL;
 WINDOW *info_pad = NULL;
 int current_line = 0;
 int previous_line = -1;
+int top_line = 0;
 pthread_t key_event_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
@@ -413,15 +414,28 @@ void print_available_devices(pcap_if_t* devices) {
 }
 
 void refresh_pad() {
+  // Make sure current line is visible
   if (current_line < 0) {
     current_line = 0;
   } else if (current_line >= pad_length) {
     current_line = pad_length - 1;
   }
+
+  // Highlight the current line
   if (has_colors()) {
      mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
   }
-  prefresh(pad, current_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY, MAX_COLS - 1);
+
+  // Move the view of the pad if the current line isn't visible
+  if (current_line < top_line) {
+    top_line = current_line;
+  }
+  if (current_line > top_line + PAD_ROWS_TO_DISPLAY - 1) {
+    top_line = current_line - PAD_ROWS_TO_DISPLAY + 1;
+  }
+
+  // Refresh the pad
+  prefresh(pad, top_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY, MAX_COLS - 1);
 }
 
 void print_pad_row(packet_node_t *node){
