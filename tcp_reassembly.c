@@ -207,6 +207,16 @@ int is_http_stream(tcp_stream_t* stream) {
   return 0;
 }
 
+int find_substring(uint8_t* data, uint32_t len, const char* substr) {
+  uint32_t substr_len = strlen(substr);
+  for (uint32_t i = 0; i <= len - substr_len; i++) {
+    if (memcmp(data + i, substr, substr_len) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 void try_reassemble_http(tcp_stream_t* stream) {
   printf("trying to reassemble\n");
 
@@ -215,8 +225,8 @@ void try_reassemble_http(tcp_stream_t* stream) {
     return;
   }
 
-  int http_length = 0;
-  uint8_t* http_data = NULL;
+  int http_buf_len = 0;
+  uint8_t* http_buf = NULL;
 
   int segment_count = 0;
   tcp_segment_t* prev_segment = NULL;
@@ -227,30 +237,85 @@ void try_reassemble_http(tcp_stream_t* stream) {
         curr_segment->seq != prev_segment->seq + prev_segment->len) {
       fprintf(stderr, "missing segment detected>>>>>>>>>>>>>>>>>>>\n");
       // missing segment detected
-      free(http_data);
+      free(http_buf);
       return;
     }
 
+    segment_count++;
+
     // append segment data to buffer
-    http_data = realloc(http_data, http_length + curr_segment->len);
-    if (!http_data) {
+    http_buf = realloc(http_buf, http_buf_len + curr_segment->len);
+    if (!http_buf) {
       return;
     }
-    memcpy(http_data + http_length, curr_segment->data, curr_segment->len);
-    http_length += curr_segment->len;
+    memcpy(http_buf + http_buf_len, curr_segment->data, curr_segment->len);
+    http_buf_len += curr_segment->len;
+
+    // check for end of http header
+    if (http_buf_len >= 4) {
+      int header_end_idx = find_substring(http_buf, http_buf_len, "\r\n\r\n");
+
+      if (header_end_idx != -1) {
+        // found end of http header
+        header_end_idx += 4;  // include the \r\n\r\n
+
+        // check if content-length is specified
+        int content_len_start_idx =
+            find_substring(http_buf, header_end_idx, "Content-Length: ");
+        if (content_len_start_idx != -1) {
+          // content-length found
+          content_len_start_idx += strlen("Content-Length: ");
+
+          // find end of content-length line
+          int content_len_end_idx =
+              find_substring(http_buf + content_len_start_idx,
+                             header_end_idx - content_len_start_idx, "\r\n");
+
+          if (content_len_end_idx != -1) {
+            // extract content length
+            content_len_end_idx += content_len_start_idx;
+            char content_len_str[content_len_end_idx - content_len_start_idx +
+                                 1];
+            memcpy(content_len_str, http_buf + content_len_start_idx,
+                   content_len_end_idx - content_len_start_idx);
+            content_len_str[content_len_end_idx - content_len_start_idx] = '\0';
+            // convert to integer
+            int content_len = atoi(content_len_str);
+            int total_http_msg_len = header_end_idx + content_len;
+
+            // should be equal but just in case
+            if (http_buf_len >= total_http_msg_len) {
+              // complete http message reassembled
+              printf(
+                  "------------------------------------------------------------"
+                  "--\n");
+              printf("HTTP MESSAGE FULLY REASSEMBLED\n");
+              printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
+              printf("Number of segments: %d\n", segment_count);
+              print_http_header(http_buf,
+                                header_end_idx);  // print header only
+              printf(
+                  "------------------------------------------------------------"
+                  "--\n");
+              free(http_buf);
+              return;
+            }
+          }
+        }
+      }
+    }
 
     prev_segment = curr_segment;
     curr_segment = curr_segment->next;
-    segment_count++;
   }
 
   // print the http buffer
   printf("--------------------------------------------------------------\n");
-  printf("Reassembled HTTP Data (length %d):\n", http_length);
+  printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
   printf("Number of segments: %d\n", segment_count);
-  print_http_header(http_data, http_length);
+  print_http_header(http_buf, http_buf_len);
   printf("--------------------------------------------------------------\n");
-  free(http_data);
+  free(http_buf);
 }
 
 void free_tcp_stream(tcp_stream_t* stream) {
@@ -278,4 +343,4 @@ void print_http_header(uint8_t* data, uint32_t len) {
   fprintf(stderr, "HTTP Header:\n");
   fwrite(data, 1, len, stderr);
   fprintf(stderr, "\n");
- }
+}
