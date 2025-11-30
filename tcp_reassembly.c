@@ -9,6 +9,39 @@
 
 tcp_stream_t* streams_list = NULL;
 
+// Create a new TCP stream
+tcp_stream_t* create_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
+                                uint16_t src_port, uint16_t dest_port,
+                                uint32_t init_seq) {
+  tcp_stream_t* stream = malloc(sizeof(tcp_stream_t));
+  if (!stream) {
+    return NULL;
+  }
+  stream->src_ip = src_ip;
+  stream->dest_ip = dest_ip;
+  stream->src_port = src_port;
+  stream->dest_port = dest_port;
+  stream->init_seq = init_seq;
+  stream->segments = NULL;
+  stream->next = NULL;
+  return stream;
+}
+
+// Find an existing TCP stream
+tcp_stream_t* get_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
+                             uint16_t src_port, uint16_t dest_port) {
+  tcp_stream_t* stream = streams_list;
+  while (stream != NULL) {
+    if (stream->src_ip == src_ip && stream->dest_ip == dest_ip &&
+        stream->src_port == src_port && stream->dest_port == dest_port) {
+      return stream;
+    }
+    stream = stream->next;
+  }
+  return NULL;
+}
+
+// Create a new TCP segment
 tcp_segment_t* create_tcp_segment(uint32_t seq, uint32_t len, uint8_t* data) {
   tcp_segment_t* segment = malloc(sizeof(tcp_segment_t));
   if (!segment) {
@@ -26,6 +59,7 @@ tcp_segment_t* create_tcp_segment(uint32_t seq, uint32_t len, uint8_t* data) {
   return segment;
 }
 
+// Insert a TCP segment into the stream in order
 void insert_tcp_segment(tcp_stream_t* stream, tcp_segment_t* new_segment) {
   // if the stream has no segments, add as first
   if (stream->segments == NULL) {
@@ -47,36 +81,7 @@ void insert_tcp_segment(tcp_stream_t* stream, tcp_segment_t* new_segment) {
   }
 }
 
-tcp_stream_t* create_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
-                                uint16_t src_port, uint16_t dest_port,
-                                uint32_t init_seq) {
-  tcp_stream_t* stream = malloc(sizeof(tcp_stream_t));
-  if (!stream) {
-    return NULL;
-  }
-  stream->src_ip = src_ip;
-  stream->dest_ip = dest_ip;
-  stream->src_port = src_port;
-  stream->dest_port = dest_port;
-  stream->init_seq = init_seq;
-  stream->segments = NULL;
-  stream->next = NULL;
-  return stream;
-}
-
-tcp_stream_t* get_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
-                             uint16_t src_port, uint16_t dest_port) {
-  tcp_stream_t* stream = streams_list;
-  while (stream != NULL) {
-    if (stream->src_ip == src_ip && stream->dest_ip == dest_ip &&
-        stream->src_port == src_port && stream->dest_port == dest_port) {
-      return stream;
-    }
-    stream = stream->next;
-  }
-  return NULL;
-}
-
+// Handle an incoming TCP packet
 void handle_tcp_packet(uint8_t* packet, uint32_t len) {
   // extract tcp/ip info
   sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
@@ -243,48 +248,55 @@ void try_reassemble_http(tcp_stream_t* stream) {
 
     segment_count++;
 
-    // append segment data to buffer
+    // increase buffer size
     http_buf = realloc(http_buf, http_buf_len + curr_segment->len);
     if (!http_buf) {
       return;
     }
+
+    // append segment data to buffer
     memcpy(http_buf + http_buf_len, curr_segment->data, curr_segment->len);
     http_buf_len += curr_segment->len;
 
-    // check for end of http header
+    // find the end of the http header
     if (http_buf_len >= 4) {
-      int header_end_idx = find_substring(http_buf, http_buf_len, "\r\n\r\n");
+      int hdr_end_idx = find_substring(http_buf, http_buf_len, "\r\n\r\n");
 
-      if (header_end_idx != -1) {
+      if (hdr_end_idx != -1) {
         // found end of http header
-        header_end_idx += 4;  // include the \r\n\r\n
+        hdr_end_idx += 4;  // include the \r\n\r\n
 
         // check if content-length is specified
-        int content_len_start_idx =
-            find_substring(http_buf, header_end_idx, "Content-Length: ");
-        if (content_len_start_idx != -1) {
+        // this gives us the length of the payload
+        int con_len_start_idx =
+            find_substring(http_buf, hdr_end_idx, "Content-Length: ");
+        if (con_len_start_idx != -1) {
           // content-length found
-          content_len_start_idx += strlen("Content-Length: ");
+          con_len_start_idx += strlen("Content-Length: ");
 
           // find end of content-length line
-          int content_len_end_idx =
-              find_substring(http_buf + content_len_start_idx,
-                             header_end_idx - content_len_start_idx, "\r\n");
+          int con_len_end_idx =
+              find_substring(http_buf + con_len_start_idx,
+                             hdr_end_idx - con_len_start_idx, "\r\n");
 
-          if (content_len_end_idx != -1) {
+          if (con_len_end_idx != -1) {
             // extract content length
-            content_len_end_idx += content_len_start_idx;
-            char content_len_str[content_len_end_idx - content_len_start_idx +
-                                 1];
-            memcpy(content_len_str, http_buf + content_len_start_idx,
-                   content_len_end_idx - content_len_start_idx);
-            content_len_str[content_len_end_idx - content_len_start_idx] = '\0';
+            con_len_end_idx += con_len_start_idx;
+
+            // allocate string for content length
+            char con_len_str[con_len_end_idx - con_len_start_idx + 1];
+            memcpy(con_len_str, http_buf + con_len_start_idx,
+                   con_len_end_idx - con_len_start_idx);
+            con_len_str[con_len_end_idx - con_len_start_idx] = '\0';
+
             // convert to integer
-            int content_len = atoi(content_len_str);
-            int total_http_msg_len = header_end_idx + content_len;
+            int con_len = atoi(con_len_str);
+
+            // total http message length
+            int http_msg_len = hdr_end_idx + con_len;
 
             // should be equal but just in case
-            if (http_buf_len >= total_http_msg_len) {
+            if (http_buf_len >= http_msg_len) {
               // complete http message reassembled
               printf(
                   "------------------------------------------------------------"
@@ -292,11 +304,11 @@ void try_reassemble_http(tcp_stream_t* stream) {
               printf("HTTP MESSAGE FULLY REASSEMBLED\n");
               printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
               printf("Number of segments: %d\n", segment_count);
-              
-              // fwrite(http_buf, 1, header_end_idx, stdout); // print header only
+
+              // fwrite(http_buf, 1, hdr_end_idx, stdout); // print header only
               fwrite(http_buf, 1, http_buf_len, stdout);  // print full message
               printf("\n");
-              
+
               printf(
                   "------------------------------------------------------------"
                   "--\n");
