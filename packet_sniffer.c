@@ -14,27 +14,6 @@
 #include <math.h>
 #include <pthread.h>
 
-
-struct packet_node {
-  uint8_t *packet;
-  struct pcap_pkthdr hdr;      
-  struct packet_node *prev;
-  struct packet_node *next;
-
-  unsigned int number;         
-  double time_rel;             
-
-  uint32_t src_ip;             
-  uint32_t dst_ip;
-  uint8_t  proto;              
-
-  uint32_t length;             
-  
-  char *info; 
-
-};
-typedef struct packet_node packet_node_t;
-
 packet_node_t* packet_list = NULL;
 
 pthread_mutex_t packet_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -48,13 +27,6 @@ char* usage =
     "  -p <protocol>    Protocol to filter (default=any)\n"
     "  -t <duration>    Duration to sniff in seconds (default=unlimited)\n"
     "  -h               View usage information\n";
-
-struct options {
-  char* interface;
-  char* filename;
-  char* protocol;
-  int duration;
-} typedef options_t;
 
 typedef enum {
     SORT_BY_NUMBER,
