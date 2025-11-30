@@ -27,6 +27,7 @@ WINDOW *win_title = NULL;
 WINDOW *info_pad = NULL;
 WINDOW *win_key = NULL;
 WINDOW *stats = NULL;
+WINDOW *win_packet_num = NULL;
 int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
@@ -39,8 +40,8 @@ const int SOURCE_INDEX = 30;
 const int DESTINATION_INDEX = 60;
 const int PROTOCOL_INDEX = 90;
 const int LENGTH_INDEX = 105;
-const int PAD_ROWS_TO_DISPLAY = 20;
-const int INFO_ROWS_TO_DISPLAY = 20;
+const int PAD_ROWS_TO_DISPLAY = 15;
+const int INFO_ROWS_TO_DISPLAY = 15;
 const int INFO_PAD_ROWS = 100;
 const int INFO_PAD_COLS = 80;
 const int TITLE_PAD_ROWS = 1;
@@ -48,10 +49,14 @@ const int TITLE_PAD_X = 0;
 const int TITLE_PAD_Y = 0;
 const int PAD_X = 0;
 const int PAD_Y = 2;
+const int PACKET_NUM_ROWS = 2;
+const int PACKET_NUM_COLS = 50;
+const int PACKET_NUM_X = 0;
+const int PACKET_NUM_Y =  TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
 const int INFO_PAD_X = 0;
-const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
+const int INFO_PAD_Y = PACKET_NUM_Y + PACKET_NUM_ROWS + 1;
 const int KEY_X = 80;
-const int KEY_Y = INFO_PAD_Y;
+const int KEY_Y = PACKET_NUM_Y;
 const int KEY_ROWS = 15;
 const int KEY_COLS = MAX_COLS - KEY_X;
 
@@ -444,7 +449,7 @@ void refresh_pad() {
   }
 
   // Refresh the pad
-  prefresh(pad, top_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY, MAX_COLS - 1);
+  prefresh(pad, top_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY - 1, MAX_COLS - 1);
 }
 
 void print_pad_row(packet_node_t *node){
@@ -567,7 +572,6 @@ void display_sniffer_header() {
   win_title = newwin(TITLE_PAD_ROWS, MAX_COLS, TITLE_PAD_X, TITLE_PAD_Y);
   werase(win_title);
   wrefresh(win_title);
-  // box(win_title, '|', '-');  
   mvwprintw(win_title, 0, PACKET_NUM_INDEX, "Number");
   mvwprintw(win_title, 0, TIME_INDEX, "Time");
   mvwprintw(win_title, 0, SOURCE_INDEX, "Source");
@@ -576,6 +580,15 @@ void display_sniffer_header() {
   mvwprintw(win_title, 0, LENGTH_INDEX, "Length");
   
   wrefresh(win_title);
+}
+
+void display_packet_number() {
+  // Print title containing packet number
+  win_packet_num = newwin(PACKET_NUM_ROWS, PACKET_NUM_COLS, PACKET_NUM_Y, PACKET_NUM_X);
+  werase(win_packet_num);
+  wrefresh(win_packet_num);
+  mvwprintw(win_packet_num, 0, 0, "  PACKET INFORMATION");
+  wrefresh(win_packet_num);
 }
 
 void display_key_window() {
@@ -614,6 +627,11 @@ void display_key_window() {
   wrefresh(win_key);
 }
 
+void refresh_info_pad() {
+  wclrtoeol(info_pad);
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+}
+
 void display_header_info() {
   // Print header information for current line
   if (!(packet_list != NULL && current_line >= 0 && current_line < get_packet_list_length(0, packet_list))){
@@ -625,15 +643,20 @@ void display_header_info() {
     return;
   } 
 
+  // Display packet number title
+  werase(win_packet_num);
+  mvwprintw(win_packet_num, 0, 0, "  PACKET NUMBER %d", node->number);
+  wrefresh(win_packet_num);
+
   current_info_line = 0;
   werase(info_pad);
-  mvwprintw(info_pad, 0, 2, "PACKET INFO for Packet Number %d", node->number);
-  mvwprintw(info_pad, 2, 0, "%s", node->info);
-    char *info = node->info;
+  wrefresh(info_pad);
+  mvwprintw(info_pad, 0, 0, "%s", node->info);
+  char *info = node->info;
   int info_length = strlen(info);
   char buf[info_length + 1];
   char line[info_length + 1];
-  int line_count = 2;
+  int line_count = 0;
 
   sprintf(buf, "%s", "");
   sprintf(line, "%s", "");
@@ -653,11 +676,7 @@ void display_header_info() {
     }
   }
 
-  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
-}
-
-void refresh_info_pad() {
-  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+  refresh_info_pad();
 }
 
 void create_header_info_pad() {
@@ -673,7 +692,6 @@ void create_header_info_pad() {
 
   // Packet Info title
   werase(info_pad);
-  mvwprintw(info_pad, 0, 0, "PACKET INFO");
   prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
 }
 
@@ -691,6 +709,10 @@ void initialize_windows() {
 
   // Initialize header with titles for columns
   display_sniffer_header();
+
+  // Initialize window for packet number
+  display_packet_number();
+
 
   // Initialize pad with header info
   create_header_info_pad();
@@ -725,6 +747,10 @@ void delete_windows() {
   if (win_key != NULL) {
     werase(win_key);
     delwin(win_key);
+  }
+  if (win_packet_num != NULL) {
+    werase(win_packet_num);
+    delwin(win_packet_num);
   }
   endwin();
 }
@@ -829,8 +855,8 @@ void *handle_key_event(void *arg) {
         refresh_info_pad();
         break;
       case KEY_RIGHT:
-        if (current_info_line >= max_info_lines - PAD_ROWS_TO_DISPLAY) {
-          current_info_line = max_info_lines - PAD_ROWS_TO_DISPLAY + 2;
+        if (current_info_line >= max_info_lines - INFO_ROWS_TO_DISPLAY) {
+          current_info_line = max_info_lines - INFO_ROWS_TO_DISPLAY;
         } else {
           current_info_line += 1;
         }
