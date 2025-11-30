@@ -20,7 +20,7 @@
 
 /* Global Variables */
 packet_node_t *packet_list = NULL;
-packet_node_t *first_node = NULL;
+packet_node_t *last_node = NULL;
 int pad_length = 0;
 WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
@@ -43,7 +43,7 @@ const int TITLE_PAD_Y = 0;
 const int PAD_X = 0;
 const int PAD_Y = 2;
 const int INFO_PAD_X = 0;
-const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 1;
+const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
 
 /* Command Line Argument Functions */
 
@@ -306,11 +306,14 @@ packet_node_t* add_packet_node(const uint8_t* packet,
   //add to packet list
   node->prev = prev;
   node->next = next;
+  if (prev) {
+    prev->next = node;
+  }
   if (next) {
     next->prev = node;
   }
-  if (packet_list == next || packet_list == NULL) {
-    packet_list = node;
+  if (last_node == prev || last_node == NULL) {
+    last_node = node;
   }
   
   node->info = format_hdrs_to_string(node->packet, node->length);
@@ -339,11 +342,10 @@ int get_packet_list_length(int length, packet_node_t* node) {
 }
 
 packet_node_t *get_packet_by_index(int index) {
-  // Reversed list
   int count = 0;
-  packet_node_t *node = first_node;
-  while (node->prev != NULL && count < index) {
-    node = node->prev;
+  packet_node_t *node = packet_list;
+  while (node->next != NULL && count < index) {
+    node = node->next;
     count += 1;
   }
   return node;
@@ -429,10 +431,10 @@ void print_pad_row(packet_node_t *node){
 void update_pad() {
   werase(pad);
   pad_length = 0;
-  packet_node_t* node = first_node;
+  packet_node_t* node = packet_list;
   while (node != NULL) {
     print_pad_row(node);
-    node = node->prev;
+    node = node->next;
   }
   refresh_pad();
 }
@@ -464,7 +466,7 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   // add to packet list 
   pthread_mutex_lock(&packet_list_lock);
   packet_node_t* new_node =
-    add_packet_node(packet, header, NULL, packet_list, packet_count, t);
+  add_packet_node(packet, header, last_node, NULL, packet_count, t);
   pthread_mutex_unlock(&packet_list_lock);
 
   if (!new_node) {
@@ -473,7 +475,8 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   }
 
   if (!first_ts_set) {
-    first_node = new_node;
+    packet_list = new_node;
+    last_node = new_node;
     first_ts_set = 1;
   }
 
@@ -546,6 +549,15 @@ void initialize_pad() {
   create_header_info_pad();
 }
 
+void update_after_key_press() {
+    if (has_colors()) {
+      mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+      mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
+    }
+    refresh_pad();
+    display_header_info();
+}
+
 void *handle_key_event(void *arg) {
   int key;
   while(1) {
@@ -558,12 +570,7 @@ void *handle_key_event(void *arg) {
           previous_line = current_line;
           current_line -= 1;
         }
-        if (has_colors()) {
-          mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
-          mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
-        }
-        refresh_pad();
-        display_header_info();
+        update_after_key_press();
         break;
       case KEY_DOWN:
         if (current_line >= MAX_ROWS) {
@@ -572,10 +579,11 @@ void *handle_key_event(void *arg) {
           previous_line = current_line;
           current_line += 1;
         }
-        if (has_colors()) {
-          mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
-          mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
-        }
+        update_after_key_press();
+        break;
+      case 's':
+        sort_packet_list(SORT_BY_PROTO, 1);
+        current_line = 0;
         refresh_pad();
         display_header_info();
         break;

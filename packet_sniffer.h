@@ -3,6 +3,8 @@
 
 #include <pcap.h>
 #include <stdint.h>
+#include "sr_protocol.h"
+#include "sr_utils.h"
 
 struct packet_node {
   uint8_t *packet;
