@@ -3,6 +3,7 @@
 
 #include <pcap.h>
 #include <stdint.h>
+#include "tcp_reassembly.h"
 
 struct packet_node {
   uint8_t *packet;
@@ -20,8 +21,6 @@ struct packet_node {
   uint32_t length;             
   
   char *info; 
-
-  char* info;
 
   // http specific
   uint8_t* http_buf;

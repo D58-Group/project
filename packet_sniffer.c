@@ -13,7 +13,6 @@
 #include "sr_protocol.h"
 #include <math.h>
 #include <pthread.h>
-#include "tcp_reassembly.h"
 
 packet_node_t* packet_list = NULL;
 
