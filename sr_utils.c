@@ -160,7 +160,7 @@ void print_hdr_udp(uint8_t *buf) {
 void print_hdr_tcp(uint8_t *buf) {
   sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)buf;
 
-  uint8_t data_offset = (tcp_hdr->tcp_offx2 >> 4);  
+  uint8_t data_offset = (tcp_hdr->tcp_off >> 4);  
   uint8_t flags       = tcp_hdr->tcp_flags;
 
   fprintf(stderr, "TCP header:\n");
@@ -267,7 +267,7 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
         else {
           print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
           sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-          int tcp_data_offset = tcp_hdr->tcp_offx2 >> 4;  /* get data offset (last 4 bytes are reserved) */
+          int tcp_data_offset = tcp_hdr->tcp_off >> 4;  /* get data offset (last 4 bytes are reserved) */
           int tcp_header_length = tcp_data_offset * 4;
           if (length > sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length) {
             fprintf(stderr, "\nTCP payload\n");

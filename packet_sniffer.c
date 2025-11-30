@@ -17,6 +17,32 @@
 
 #define MAX_ROWS 10000
 #define MAX_COLS 120
+#define TS_WINDOW_SEC 1.0
+
+
+typedef struct ts_bin {
+    double   start_time;
+
+    uint64_t pkt_count;
+    uint64_t byte_count;
+
+    uint64_t ipv4_count;
+    uint64_t arp_count;
+
+    uint64_t tcp_count;
+    uint64_t udp_count;
+    uint64_t icmp_count;
+    uint64_t other_l4_count;
+
+    uint64_t http_count;
+
+    struct ts_bin *next;
+} ts_bin_t;
+
+static ts_bin_t *ts_head = NULL;
+static ts_bin_t *ts_tail = NULL;
+static pthread_mutex_t ts_lock = PTHREAD_MUTEX_INITIALIZER;
+
 
 /* Global Variables */
 packet_node_t *packet_list = NULL;
@@ -470,7 +496,7 @@ void print_pad_row(packet_node_t *node){
   if (proto == ARP) {
     convert_addr_eth_to_str(node->ar_sha, src);
     convert_addr_eth_to_str(node->ar_tha, dst);
-  } else if (proto == ICMP || TCP || UDP || IPV4) {
+  } else if (proto == ICMP || proto == TCP || proto == UDP || proto == IPV4) {
     convert_addr_ip_int_to_str(node->src_ip, src);
     convert_addr_ip_int_to_str(node->dst_ip, dst);
   } else {
@@ -521,6 +547,127 @@ void update_pad() {
   refresh_pad();
 }
 
+//check if is ip4
+static inline int is_ipv4(const uint8_t *pkt, uint32_t caplen) {
+    if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
+    return ethertype((uint8_t*)pkt) == ethertype_ip;
+}
+
+//check if arp
+static inline int is_arp(const uint8_t *pkt, uint32_t caplen) {
+    if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
+    return ethertype((uint8_t*)pkt) == ethertype_arp;
+}
+
+//check if http
+static int is_http(const uint8_t *pkt, uint32_t caplen) {
+    //should be ip 
+    if (!is_ipv4(pkt, caplen)) return 0;
+
+    const sr_ip_hdr_t *ip =
+      (const sr_ip_hdr_t *)(pkt + sizeof(sr_ethernet_hdr_t));
+
+    //should be tcp   
+    if (ip->ip_p != 6) return 0;  
+
+    uint32_t ip_hdr_len = ip->ip_hl * 4;
+    uint32_t offset = sizeof(sr_ethernet_hdr_t) + ip_hdr_len;
+
+    if (caplen < offset + sizeof(sr_tcp_hdr_t))
+        return 0;
+
+    const sr_tcp_hdr_t *tcp =
+      (const sr_tcp_hdr_t *)(pkt + sizeof(sr_ethernet_hdr_t) + ip_hdr_len);
+
+    uint16_t sport = ntohs(tcp->tcp_src);
+    uint16_t dport = ntohs(tcp->tcp_dst);
+
+    //check the ports
+    if (sport == 80 || dport == 80 ||
+        sport == 8080 || dport == 8080 ||
+        sport == 8000 || dport == 8000)
+        return 1;
+
+    //check methid 
+    uint32_t tcp_hdr_len = tcp->tcp_off * 4;
+    uint32_t payload_offset = offset + tcp_hdr_len;
+    if (payload_offset >= caplen) return 0;
+
+    const char *pl = (const char *)(pkt + payload_offset);
+    uint32_t plen = caplen - payload_offset;
+
+    if (plen >= 3 && (!memcmp(pl, "GET", 3) ||
+                     !memcmp(pl, "PUT", 3) ||
+                     !memcmp(pl, "POST", 4) ||
+                     !memcmp(pl, "HEAD", 4) ||
+                     !memcmp(pl, "HTTP", 4)))
+        return 1;
+
+    return 0;
+}
+
+//make new bins 
+static ts_bin_t *ts_make_bin_for_time(double t_rel) {
+    if (!ts_head) {
+        ts_bin_t *bin = calloc(1, sizeof(ts_bin_t));
+        if (!bin) return NULL;
+        bin->start_time = floor(t_rel / TS_WINDOW_SEC) * TS_WINDOW_SEC;
+        ts_head = ts_tail = bin;
+        return bin;
+    }
+
+    while (t_rel >= ts_tail->start_time + TS_WINDOW_SEC) {
+        ts_bin_t *bin = calloc(1, sizeof(ts_bin_t));
+        if (!bin) return ts_tail; 
+        bin->start_time = ts_tail->start_time + TS_WINDOW_SEC;
+        ts_tail->next = bin;
+        ts_tail = bin;
+    }
+
+    return ts_tail;
+}
+
+static void ts_update(double t_rel,
+                      const uint8_t *packet,
+                      const struct pcap_pkthdr *hdr)
+{
+    pthread_mutex_lock(&ts_lock);
+
+    ts_bin_t *bin = ts_make_bin_for_time(t_rel);
+    if (!bin) {
+        pthread_mutex_unlock(&ts_lock);
+        return;
+    }
+
+    bin->pkt_count++;
+    bin->byte_count += hdr->len;
+
+   //l1
+    if (is_ipv4(packet, hdr->len))
+        bin->ipv4_count++;
+    else if (is_arp(packet, hdr->len))
+        bin->arp_count++;
+
+    //l4
+    uint8_t p = 0;
+    if (is_ipv4(packet, hdr->len)) {
+        const sr_ip_hdr_t *ip =
+            (const sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+        p = ip->ip_p;
+
+        if      (p == 6)  bin->tcp_count++;
+        else if (p == 17) bin->udp_count++;
+        else if (p == 1)  bin->icmp_count++;
+        else              bin->other_l4_count++;
+    }
+
+    /* HTTP */
+    if (is_http(packet, hdr->len))
+        bin->http_count++;
+
+    pthread_mutex_unlock(&ts_lock);
+}
+
 void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
   
@@ -544,6 +691,8 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
 
   double t = (header->ts.tv_sec  - first_ts.tv_sec) +
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
+
+  ts_update(t, packet, header);
 
   // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
