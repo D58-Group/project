@@ -31,6 +31,7 @@ int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
 int current_info_line = 0;
+int max_info_lines = 0;
 pthread_t key_event_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
@@ -40,7 +41,7 @@ const int PROTOCOL_INDEX = 90;
 const int LENGTH_INDEX = 105;
 const int PAD_ROWS_TO_DISPLAY = 20;
 const int INFO_ROWS_TO_DISPLAY = 20;
-const int INFO_PAD_ROWS = 70;
+const int INFO_PAD_ROWS = 100;
 const int INFO_PAD_COLS = 80;
 const int TITLE_PAD_ROWS = 1;
 const int TITLE_PAD_X = 0;
@@ -628,6 +629,29 @@ void display_header_info() {
   werase(info_pad);
   mvwprintw(info_pad, 0, 2, "PACKET INFO for Packet Number %d", node->number);
   mvwprintw(info_pad, 2, 0, "%s", node->info);
+    char *info = node->info;
+  int info_length = strlen(info);
+  char buf[info_length + 1];
+  char line[info_length + 1];
+  int line_count = 2;
+
+  sprintf(buf, "%s", "");
+  sprintf(line, "%s", "");
+
+  max_info_lines = 0;
+  for (int i = 0; i < info_length; i++) {
+    if (info[i] == '\n') {
+      mvwprintw(info_pad, line_count, 0, "%s", line);
+      line_count += 1;
+      sprintf(buf, "%s", "");
+      sprintf(line, "%s", "");
+      max_info_lines += 1;
+    } else {
+      buf[0] = info[i];
+      buf[1] = '\0';
+      strcat(line, buf);
+    }
+  }
 
   prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
 }
@@ -811,8 +835,8 @@ void *handle_key_event(void *arg) {
         refresh_info_pad();
         break;
       case KEY_RIGHT:
-        if (current_info_line >= INFO_PAD_ROWS - 1) {
-          current_info_line = INFO_PAD_ROWS - PAD_ROWS_TO_DISPLAY;
+        if (current_info_line >= max_info_lines - PAD_ROWS_TO_DISPLAY) {
+          current_info_line = max_info_lines - PAD_ROWS_TO_DISPLAY + 2;
         } else {
           current_info_line += 1;
         }
