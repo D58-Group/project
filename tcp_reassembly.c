@@ -292,8 +292,11 @@ void try_reassemble_http(tcp_stream_t* stream) {
               printf("HTTP MESSAGE FULLY REASSEMBLED\n");
               printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
               printf("Number of segments: %d\n", segment_count);
-              print_http_header(http_buf,
-                                header_end_idx);  // print header only
+              
+              // fwrite(http_buf, 1, header_end_idx, stdout); // print header only
+              fwrite(http_buf, 1, http_buf_len, stdout);  // print full message
+              printf("\n");
+              
               printf(
                   "------------------------------------------------------------"
                   "--\n");
@@ -311,9 +314,10 @@ void try_reassemble_http(tcp_stream_t* stream) {
 
   // print the http buffer
   printf("--------------------------------------------------------------\n");
-  printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
+  printf("reassembling tcp stream (length %d):\n", http_buf_len);
   printf("Number of segments: %d\n", segment_count);
-  print_http_header(http_buf, http_buf_len);
+  fwrite(http_buf, 1, http_buf_len, stdout);
+  printf("\n");
   printf("--------------------------------------------------------------\n");
   free(http_buf);
 }
@@ -337,10 +341,4 @@ void free_all_tcp_streams() {
     stream = next;
   }
   streams_list = NULL;
-}
-
-void print_http_header(uint8_t* data, uint32_t len) {
-  fprintf(stderr, "HTTP Header:\n");
-  fwrite(data, 1, len, stderr);
-  fprintf(stderr, "\n");
 }

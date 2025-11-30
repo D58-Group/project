@@ -31,7 +31,6 @@ tcp_stream_t* get_tcp_stream(uint32_t, uint32_t, uint16_t, uint16_t);
 void handle_tcp_packet(uint8_t*, uint32_t);
 void print_tcp_stream(tcp_stream_t*);
 void print_all_tcp_streams();
-void print_http_header(uint8_t*, uint32_t);
 void try_reassemble_http(tcp_stream_t*);
 
 #endif
