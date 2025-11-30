@@ -115,12 +115,8 @@ static int cmp_uint32(uint32_t a, uint32_t b) {
     return 0;
 }
 
-
-static int packet_node_cmp(const void *pa, const void *pb) {
-    const packet_node_t *a = *(const packet_node_t * const *)pa;
-    const packet_node_t *b = *(const packet_node_t * const *)pb;
-
-    int result = 0;
+static int packet_node_cmp(packet_node_t *a, packet_node_t *b) {
+ int result = 0;
 
     switch (current_sort_key) {
         case SORT_BY_NUMBER:
@@ -167,6 +163,13 @@ static int packet_node_cmp(const void *pa, const void *pb) {
     return result;
 }
 
+static int packet_cmp(const void *pa, const void *pb) {
+    const packet_node_t *a = *(const packet_node_t * const *)pa;
+    const packet_node_t *b = *(const packet_node_t * const *)pb;
+
+    return packet_node_cmp((packet_node_t *) a, (packet_node_t *) b);
+}
+
 void sort_packet_list(sort_key_t key, int ascending) {
     pthread_mutex_lock(&packet_list_lock);
 
@@ -187,7 +190,7 @@ void sort_packet_list(sort_key_t key, int ascending) {
     current_sort_key = key;
     current_sort_ascending = ascending ? 1 : 0;
 
-    qsort(arr, n, sizeof(packet_node_t *), packet_node_cmp);
+    qsort(arr, n, sizeof(packet_node_t *), packet_cmp);
 
     packet_list = array_to_packet_list(arr, n);
 
@@ -243,10 +246,8 @@ pcap_if_t* find_device_by_name(pcap_if_t* devices, const char* name) {
   return NULL;
 }
 
-packet_node_t* add_packet_node(const uint8_t* packet,
+packet_node_t* create_packet_node(const uint8_t* packet,
                                const struct pcap_pkthdr* packet_hdr,
-                               packet_node_t* prev,
-                               packet_node_t* next,
                                unsigned int number,
                                double rel_time) {
   packet_node_t* node = malloc(sizeof(packet_node_t));
@@ -302,22 +303,66 @@ packet_node_t* add_packet_node(const uint8_t* packet,
   }
 
   node->proto = get_protocol(node->packet);
+  node->info = format_hdrs_to_string(node->packet, node->length);
 
-  //add to packet list
+  node->next = NULL;
+  node->prev = NULL;
+  return node;
+}
+
+void get_position_for_new_node(packet_node_t *new_node, packet_node_t **prev, packet_node_t **next) {
+  packet_node_t *a = NULL;
+  packet_node_t *b = new_node;
+  packet_node_t *c = packet_list;
+
+  if (b == NULL || c == NULL) {
+    *prev = NULL;
+    *next = NULL;
+    return;
+  }
+
+  // Traverse through list to determine where to insert new node
+  while(c != NULL) {
+    if (packet_node_cmp(b, c) != 1) {
+      *prev = a;
+      *next = c;
+      return;
+    }
+    a = c;
+    c = c->next;
+  }
+  *prev = a;
+  *next = c;
+}
+
+void add_to_packet_list(packet_node_t *node) {
+  packet_node_t *prev = NULL;
+  packet_node_t *next = NULL;
+
+  // Get prev and next values for new node
+  get_position_for_new_node(node, &prev, &next);
+
+  // Add to packet list
   node->prev = prev;
   node->next = next;
+
+  // Update other nodes to point to new node
   if (prev) {
     prev->next = node;
   }
   if (next) {
     next->prev = node;
   }
+
+  // If node is at the beginning of the list, set it at the head
+  if (packet_list == next || packet_list == NULL) {
+    packet_list = node;
+  }
+
+  // If node is at the end of list, set it as the last node
   if (last_node == prev || last_node == NULL) {
     last_node = node;
   }
-  
-  node->info = format_hdrs_to_string(node->packet, node->length);
-  return node;
 }
 
 void delete_packet_nodes(packet_node_t* node) {
@@ -377,17 +422,20 @@ void refresh_pad() {
      mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
   }
   prefresh(pad, current_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY, MAX_COLS - 1);
-  // prefresh(pad, current_line, 0, 2, 0, 20, MAX_COLS - 1);
 }
 
 void print_pad_row(packet_node_t *node){
+  // Highlight current row
   if (has_colors() && pad_length == current_line) {
     attron(COLOR_PAIR(1));
   }
+
+  // Print number and time
   char buf[100];
   mvwprintw(pad, pad_length, PACKET_NUM_INDEX, "%u", node->number);
   mvwprintw(pad, pad_length, TIME_INDEX, "%lf", node->time_rel);
 
+  // Print source and destination
   char src[120];
   char dst[120];
   uint8_t proto = node->proto;
@@ -404,6 +452,7 @@ void print_pad_row(packet_node_t *node){
   mvwprintw(pad, pad_length, SOURCE_INDEX, "%s", src);
   mvwprintw(pad, pad_length, DESTINATION_INDEX, "%s", dst);
 
+  // Print protocol
   if (proto == ARP) {
     sprintf(buf, "%s", "ARP");
   } else if (proto == ICMP) {
@@ -419,8 +468,11 @@ void print_pad_row(packet_node_t *node){
   }
 
   mvwprintw(pad, pad_length, PROTOCOL_INDEX, "%s", buf);
+
+  // Print length
   mvwprintw(pad, pad_length, LENGTH_INDEX, "%d", node->length);
 
+  // Turn off highlighting
   if (has_colors() && pad_length == current_line) {
     attroff(COLOR_PAIR(1));
   }
@@ -432,6 +484,8 @@ void update_pad() {
   werase(pad);
   pad_length = 0;
   packet_node_t* node = packet_list;
+
+  // Print each row of packet list
   while (node != NULL) {
     print_pad_row(node);
     node = node->next;
@@ -463,10 +517,11 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   double t = (header->ts.tv_sec  - first_ts.tv_sec) +
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
-  // add to packet list 
+  // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
   packet_node_t* new_node =
-  add_packet_node(packet, header, last_node, NULL, packet_count, t);
+  create_packet_node(packet, header, packet_count, t);
+  add_to_packet_list(new_node);
   pthread_mutex_unlock(&packet_list_lock);
 
   if (!new_node) {
@@ -485,6 +540,7 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
 }
 
 void display_sniffer_header() {
+  // Print header of table for packet list
   win_title = newwin(TITLE_PAD_ROWS, MAX_COLS, TITLE_PAD_X, TITLE_PAD_Y);
   werase(win_title);
   wrefresh(win_title);
@@ -501,6 +557,7 @@ void display_sniffer_header() {
 
 
 void display_header_info() {
+  // Print header information for current line
   if (!(packet_list != NULL && current_line >= 0 && current_line < get_packet_list_length(0, packet_list))){
     return;
   }
@@ -582,7 +639,7 @@ void *handle_key_event(void *arg) {
         update_after_key_press();
         break;
       case 's':
-        sort_packet_list(SORT_BY_PROTO, 1);
+        sort_packet_list(SORT_BY_TIME, 0);
         current_line = 0;
         refresh_pad();
         display_header_info();
