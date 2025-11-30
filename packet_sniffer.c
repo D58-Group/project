@@ -13,6 +13,7 @@
 #include "sr_protocol.h"
 #include <math.h>
 #include <pthread.h>
+#include "tcp_reassembly.h"
 
 packet_node_t* packet_list = NULL;
 
@@ -308,13 +309,16 @@ void print_available_devices(pcap_if_t* devices) {
   }
 }
 
-
 void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
   
   options_t *opts = (options_t *)args_unused;
 
-  // filter first: only keep packets that match
+  if (match_protocol(packet, header->len, "tcp")) {
+      printf("TCP PACKET CAPTURED\n");
+      handle_tcp_packet((uint8_t *)packet, header->len);
+  }
+
   if (!match_protocol(packet, header->len, opts->protocol)) {
       return;
   }
@@ -349,7 +353,7 @@ void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
   printf("Got packet of length %u\n", header->len);
   fflush(stdout);
 
-  print_hdrs((uint8_t*)packet, header->len);
+  // print_hdrs((uint8_t*)packet, header->len);
   /* Uncomment below for ncurses ui */
   // printw("length: %d \n", header->len);
   // printw("list length: %d\n", get_packet_list_length(0, new_node));
@@ -358,12 +362,6 @@ void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
   // getch();
   // endwin();
 }
-
-
-
-
-
-
 
 int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];

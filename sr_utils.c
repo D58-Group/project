@@ -245,17 +245,17 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
     uint8_t ip_proto = ip_protocol(buf + sizeof(sr_ethernet_hdr_t));
 
     if (ip_proto == ip_protocol_icmp) { /* ICMP */
-      minlength += sizeof(sr_icmp_hdr_t);
-      if (length < minlength)
-        fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
-      else
-        print_hdr_icmp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+      // minlength += sizeof(sr_icmp_hdr_t);
+      // if (length < minlength)
+      //   fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
+      // else
+      //   print_hdr_icmp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     } else if(ip_proto == ip_protocol_udp) { /* UDP */
-        minlength += sizeof(sr_udp_hdr_t);
-        if (length < minlength)
-          fprintf(stderr, "Failed to print UDP header, insufficient length\n");
-        else
-          print_hdr_udp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        // minlength += sizeof(sr_udp_hdr_t);
+        // if (length < minlength)
+        //   fprintf(stderr, "Failed to print UDP header, insufficient length\n");
+        // else
+        //   print_hdr_udp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
     } else if (ip_proto == ip_protocol_tcp) { /* TCP */
         minlength += sizeof(sr_tcp_hdr_t);
         if (length < minlength)
@@ -283,11 +283,11 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
   }
 
   else if (ethtype == ethertype_arp) { /* ARP */
-    minlength += sizeof(sr_arp_hdr_t);
-    if (length < minlength)
-      fprintf(stderr, "Failed to print ARP header, insufficient length\n");
-    else
-      print_hdr_arp(buf + sizeof(sr_ethernet_hdr_t));
+    // minlength += sizeof(sr_arp_hdr_t);
+    // if (length < minlength)
+    //   fprintf(stderr, "Failed to print ARP header, insufficient length\n");
+    // else
+    //   print_hdr_arp(buf + sizeof(sr_ethernet_hdr_t));
   }
   else {
     fprintf(stderr, "Unrecognized Ethernet Type: %d\n", ethtype);
