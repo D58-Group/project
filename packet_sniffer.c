@@ -1,12 +1,15 @@
+#include "packet_sniffer.h"
+
+#include <arpa/inet.h>
 #include <errno.h>
 #include <ncurses.h>
 #include <pcap.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "sr_utils.h"
+
 #include "sorting.h"
-#include <arpa/inet.h> 
+#include "sr_utils.h"
 #include "sr_protocol.h"
 #include <math.h>
 #include <pthread.h>
