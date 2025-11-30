@@ -4,17 +4,28 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-
 #include "sr_utils.h"
 #include "sorting.h"
+#include <arpa/inet.h> 
+#include "sr_protocol.h"
+
 
 struct packet_node {
-  const uint8_t* packet;
-  const struct pcap_pkthdr* packet_hdr;
-  struct packet_node* prev;
-  struct packet_node* next;
-} typedef packet_node_t;
+  uint8_t *packet;
+  struct pcap_pkthdr hdr;      
+  struct packet_node *prev;
+  struct packet_node *next;
+
+  unsigned int number;         
+  double time_rel;             
+
+  uint32_t src_ip;             
+  uint32_t dst_ip;
+  uint8_t  proto;              
+
+  uint32_t length;             
+};
+typedef struct packet_node packet_node_t;
 
 packet_node_t* packet_list = NULL;
 
@@ -84,28 +95,71 @@ pcap_if_t* find_device_by_name(pcap_if_t* devices, const char* name) {
 
 packet_node_t* add_packet_node(const uint8_t* packet,
                                const struct pcap_pkthdr* packet_hdr,
-                               packet_node_t* prev, packet_node_t* next) {
+                               packet_node_t* prev,
+                               packet_node_t* next,
+                               unsigned int number,
+                               double rel_time) {
   packet_node_t* node = malloc(sizeof(packet_node_t));
-  node->packet = packet;
-  node->packet_hdr = packet_hdr;
-  node->prev = prev;
-  node->next = next;
-
-  if (packet_list != NULL) {
-    packet_list->prev = node;
+  if (!node) {
+    return NULL;
   }
 
-  packet_list = node;
+  //copy header and length 
+  node->hdr = *packet_hdr;          
+  node->length = packet_hdr->len;
+
+  //copy bytes from packer
+  node->packet = malloc(packet_hdr->len);
+  if (!node->packet) {
+    free(node);
+    return NULL;
+  }
+  memcpy(node->packet, packet, packet_hdr->len);
+
+  node->number   = number;
+  node->time_rel = rel_time;
+
+  node->src_ip = 0;
+  node->dst_ip = 0;
+  node->proto  = 0;
+
+  //IP handling
+  if (packet_hdr->len >= sizeof(sr_ethernet_hdr_t)) {
+    uint16_t ethtype_val = ethertype(node->packet);
+    if (ethtype_val == ethertype_ip &&
+        packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)) {
+
+      const sr_ip_hdr_t *ip =
+        (const sr_ip_hdr_t *)(node->packet + sizeof(sr_ethernet_hdr_t));
+
+      node->src_ip = ntohl(ip->ip_src);
+      node->dst_ip = ntohl(ip->ip_dst);
+      node->proto  = ip->ip_p;
+    }
+  }
+
+  //add to packet list
+  node->prev = prev;
+  node->next = next;
+  if (next) {
+    next->prev = node;
+  }
+  if (packet_list == next || packet_list == NULL) {
+    packet_list = node;
+  }
+
   return node;
 }
 
 void delete_packet_nodes(packet_node_t* node) {
-  packet_node_t* next = node->next;
-  free(node);
-  if (next != NULL) {
-    delete_packet_nodes(node);
+  while (node) {
+    packet_node_t* next = node->next;
+    free(node->packet);
+    free(node);
+    node = next;
   }
 }
+
 
 int get_packet_list_length(int length, packet_node_t* node) {
   if (node->next == NULL) {
@@ -116,7 +170,7 @@ int get_packet_list_length(int length, packet_node_t* node) {
 
 void print_packet_node(packet_node_t* node) {
   printw("packet: \n");
-  printw("timestamp: %d\n", node->packet_hdr->ts);
+  printw("timestamp: %d\n", (long)node->hdr.ts.tv_sec);
   printw("packet type: %d\n", ethertype((uint8_t*)(node->packet)));
 }
 
@@ -129,15 +183,40 @@ void print_available_devices(pcap_if_t* devices) {
   }
 }
 
+
 void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
-  packet_node_t* new_node = add_packet_node(packet, header, NULL, packet_list);
-
+  
   options_t *opts = (options_t *)args_unused;
 
-  /*filtering */
+  // filter first: only keep packets that match
   if (!match_protocol(packet, header->len, opts->protocol)) {
-      return; 
+      return;
+  }
+
+  // static state for numbering and time
+  static unsigned int packet_count = 0;
+  static struct timeval first_ts;
+  static int first_ts_set = 0;
+
+  packet_count++;
+
+  if (!first_ts_set) {
+    first_ts = header->ts;
+    first_ts_set = 1;
+  }
+
+  double t = (header->ts.tv_sec  - first_ts.tv_sec) +
+             (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
+
+  // add to packet list 
+  packet_node_t* new_node =
+    add_packet_node(packet, header, NULL, packet_list, packet_count, t);
+
+
+  if (!new_node) {
+    //mem fail
+    return;
   }
 
   printf("Got packet of length %u\n", header->len);
@@ -152,6 +231,12 @@ void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
   // getch();
   // endwin();
 }
+
+
+
+
+
+
 
 int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
