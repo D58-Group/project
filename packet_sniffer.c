@@ -13,7 +13,7 @@
 
 
 #define MAX_ROWS 10000
-#define MAX_COLS 140
+#define MAX_COLS 150
 
 /* Packet Node Structure */
 struct packet_node {
@@ -45,6 +45,7 @@ packet_node_t *first_node = NULL;
 int pad_length = 0;
 WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
+WINDOW *info_pad = NULL;
 int current_line = 0;
 int previous_line = -1;
 pthread_t key_event_thread;
@@ -53,7 +54,17 @@ const int TIME_INDEX = 10;
 const int SOURCE_INDEX = 30;
 const int DESTINATION_INDEX = 60;
 const int PROTOCOL_INDEX = 90;
-const int LENGTH_INDEX = 110;
+const int LENGTH_INDEX = 105;
+const int PAD_ROWS_TO_DISPLAY = 20;
+const int INFO_PAD_ROWS = 20;
+const int INFO_PAD_COLS = 150;
+const int TITLE_PAD_ROWS = 1;
+const int TITLE_PAD_X = 0;
+const int TITLE_PAD_Y = 0;
+const int PAD_X = 0;
+const int PAD_Y = 2;
+const int INFO_PAD_X = 0;
+const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 1;
 
 /* Command Line Argument Functions */
 
@@ -214,6 +225,17 @@ int get_packet_list_length(int length, packet_node_t* node) {
   return get_packet_list_length(length + 1, node->next);
 }
 
+packet_node_t *get_packet_by_index(int index) {
+  // Reversed list
+  int count = 0;
+  packet_node_t *node = first_node;
+  while (node->prev != NULL && count < index) {
+    node = node->prev;
+    count += 1;
+  }
+  return node;
+}
+
 void print_packet_node(packet_node_t* node) {
   printw("packet: \n");
   printw("timestamp: %d\n", (long)node->hdr.ts.tv_sec);
@@ -239,7 +261,8 @@ void refresh_pad() {
   if (has_colors()) {
      mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
   }
-  prefresh(pad, current_line, 0, 2, 0, 20, MAX_COLS - 1);
+  prefresh(pad, current_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY, MAX_COLS - 1);
+  // prefresh(pad, current_line, 0, 2, 0, 20, MAX_COLS - 1);
 }
 
 void print_pad_row(packet_node_t *node){
@@ -344,7 +367,7 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
 }
 
 void display_sniffer_header() {
-  win_title = newwin(1, MAX_COLS, 0, 0);
+  win_title = newwin(TITLE_PAD_ROWS, MAX_COLS, TITLE_PAD_X, TITLE_PAD_Y);
   werase(win_title);
   wrefresh(win_title);
   // box(win_title, '|', '-');  
@@ -354,21 +377,58 @@ void display_sniffer_header() {
   mvwprintw(win_title, 0, DESTINATION_INDEX, "Destination");
   mvwprintw(win_title, 0, PROTOCOL_INDEX, "Protocol");
   mvwprintw(win_title, 0, LENGTH_INDEX, "Length");
+  
   wrefresh(win_title);
+}
+
+
+void display_header_info() {
+  if (!(packet_list != NULL && current_line >= 0 && current_line < get_packet_list_length(0, packet_list))){
+    return;
+  }
+
+  packet_node_t *node = get_packet_by_index(current_line);
+  if (node == NULL) {
+    return;
+  } 
+
+  mvwprintw(info_pad, 0, 0, "%s", node->info);
+  prefresh(info_pad, 0, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_PAD_ROWS, INFO_PAD_COLS - 1);
+}
+
+void create_header_info_pad() {
+  // Initialize pad for header info
+  info_pad = newpad(INFO_PAD_ROWS, MAX_COLS);
+  wattron(pad, COLOR_PAIR(2));
+
+  if(info_pad == NULL) {
+    endwin();
+    fprintf(stderr, "Error creating info pad: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  // Packet Info title
+  mvwprintw(info_pad, 0, 0, "Packet info");
+  prefresh(info_pad, 0, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_PAD_ROWS, INFO_PAD_COLS - 1);
 }
 
 /* ncurses dynamic terminal */
 void initialize_pad() {
+  // Initialize packets pad
   pad = newpad(MAX_ROWS, MAX_COLS);
   wattron(pad, COLOR_PAIR(2));
-  display_sniffer_header();
-  refresh_pad();
 
   if(pad == NULL) {
     endwin();
     fprintf(stderr, "Error creating pad: %s\n", strerror(errno));
     exit(1);
   }
+
+  // Initialize header with titles for columns
+  display_sniffer_header();
+
+  // Initialize pad with header info
+  create_header_info_pad();
 }
 
 void *handle_key_event(void *arg) {
@@ -388,6 +448,7 @@ void *handle_key_event(void *arg) {
           mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
         }
         refresh_pad();
+        display_header_info();
         break;
       case KEY_DOWN:
         if (current_line >= MAX_ROWS) {
@@ -401,6 +462,7 @@ void *handle_key_event(void *arg) {
           mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
         }
         refresh_pad();
+        display_header_info();
         break;
       default:
         break;
@@ -415,32 +477,34 @@ void delete_windows() {
   if (win_title != NULL) {
     delwin(win_title);
   }
+  if (info_pad != NULL) {
+    delwin(info_pad);
+  }
   endwin();
 }
 
-/* Handling Ctrl-C */
-void handle_signal(int signal) {
+void close_program() {
   // Free packet list
   if (packet_list != NULL) {
     delete_packet_nodes(packet_list);
   }
 
-
   // Exit key event thread
   pthread_cancel(key_event_thread);
   pthread_join(key_event_thread, NULL);
-
-  int max_cols, max_rows;
-  getmaxyx(pad, max_rows, max_cols);
 
   // Close ncurses window
   delete_windows();
   
   printf("current_line: %d\n", current_line);
-  printf("max_rows: %d, max_cols: %d\n", max_rows, max_cols);
 
   printf("Closing packet sniffer \n");
   exit(0);
+}
+
+/* Handling Ctrl-C */
+void handle_signal(int signal) {
+ close_program();
 }
 
 int main(int argc, char* argv[]) {
