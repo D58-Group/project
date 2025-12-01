@@ -139,9 +139,23 @@ void print_hdr_icmp(uint8_t *buf) {
   /* Keep checksum in NBO */
   fprintf(stderr, "\tchecksum: %d\n", icmp_hdr->icmp_sum);
 
-  // if (icmp_hdr->type == icmp_type_3) {
-  //   fr
-  // }
+  if (icmp_hdr->icmp_type == 0) {
+    fprintf(stderr, "\t[Echo (Ping) Reply] \n");
+  } else if (icmp_hdr->icmp_type == 8) {
+    fprintf(stderr, "\t[Echo (Ping) Request] \n");
+  } else if (icmp_hdr->icmp_type == 3) {
+    sr_icmp_t3_hdr_t *icmp_t3_hdr = (sr_icmp_t3_hdr_t *)(buf);
+
+    if (icmp_t3_hdr->icmp_type == 3 && icmp_t3_hdr->icmp_code == 0) {
+      fprintf(stderr, "\t[Destination Net Unreachable] \n");
+    } else if (icmp_t3_hdr->icmp_type == 3 && icmp_t3_hdr->icmp_code == 1) {
+      fprintf(stderr, "\t[Destination Host Unreachable] \n");
+    } else if (icmp_t3_hdr->icmp_type == 3 && icmp_t3_hdr->icmp_code == 3) {
+      fprintf(stderr, "\t[Port Unreachable] \n");
+    } else if (icmp_t3_hdr->icmp_type == 11 && icmp_t3_hdr->icmp_code == 0) {
+      fprintf(stderr, "\t[Time Exceeded] \n");
+    }
+  }
 }
 
 
