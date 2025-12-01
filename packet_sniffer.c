@@ -1214,8 +1214,6 @@ int main(int argc, char* argv[]) {
 
   // Handle resizing
   signal(SIGWINCH, handle_resize_signal);
-
-  pthread_create(&key_event_thread, NULL, handle_key_event, NULL);
   
   // Initiate ncurses
   initscr();
@@ -1227,6 +1225,18 @@ int main(int argc, char* argv[]) {
   noecho();
   cbreak();
   keypad(stdscr, TRUE);
+
+  int terminal_y, terminal_x;
+  getmaxyx(stdscr, terminal_y, terminal_x);
+
+  if (terminal_x < MAX_COLS || terminal_y < INFO_PAD_Y + INFO_ROWS_TO_DISPLAY) {
+    endwin();
+    printf("Increase terminal size and run again in order to view packets properly\n");
+    exit(0);
+  }
+
+  // Start checking for key commands
+  pthread_create(&key_event_thread, NULL, handle_key_event, NULL);
 
   // Setup windows
   initialize_windows();
