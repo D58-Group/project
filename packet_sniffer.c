@@ -706,6 +706,19 @@ static void ts_update(double t_rel,
     pthread_mutex_unlock(&ts_lock);
 }
 
+void store_time_series_data() {
+  pthread_mutex_lock(&ts_lock);
+
+  ts_bin_t *bin = ts_head;
+
+  while (bin) {
+    fprintf(f, "%f %ld %ld %ld %ld %ld %ld %ld %ld\n", bin->start_time, bin->pkt_count, bin->byte_count, bin->ipv4_count, bin->arp_count, bin->tcp_count, bin->udp_count, bin->icmp_count, bin->http_count);
+    bin = bin->next;
+  }
+
+  pthread_mutex_unlock(&ts_lock);
+}
+
 void refresh_stats_window() {
   wrefresh(stats);
   mvwprintw(stats, 0, 0, "Packets");
@@ -765,6 +778,8 @@ void delete_windows() {
 }
 
 void close_program() {
+  // Store time series data
+  store_time_series_data();
   // Close file
   fclose(f);
 
@@ -816,9 +831,6 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
   ts_update(t, packet, header);
-
-  // Add to text file
-  fprintf(f, "%f %ld %ld %ld %ld %ld %ld %ld %ld\n", t, total_pkts, total_bytes, total_ipv4_count, total_arp_count, total_tcp_count, total_udp_count, total_icmp_count, total_http_count);
 
   // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
