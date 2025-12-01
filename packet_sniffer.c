@@ -69,6 +69,7 @@ int previous_line = -1;
 int top_line = 0;
 int current_info_line = 0;
 int max_info_lines = 0;
+int exceeded_max_rows = 0;
 pthread_t key_event_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
@@ -743,6 +744,58 @@ void create_stats_window() {
   refresh_stats_window();
 }
 
+void delete_windows() {
+  if (pad != NULL) {
+    werase(pad);
+    delwin(pad);
+  }
+  if (win_title != NULL) {
+    werase(win_title);
+    delwin(win_title);
+  }
+  if (info_pad != NULL) {
+    werase(info_pad);
+    delwin(info_pad);
+  }
+  if (win_key != NULL) {
+    werase(win_key);
+    delwin(win_key);
+  }
+  if (win_packet_num != NULL) {
+    werase(win_packet_num);
+    delwin(win_packet_num);
+  }
+  if (stats != NULL) {
+    werase(stats);
+    delwin(stats);
+  }
+  endwin();
+}
+
+void close_program() {
+  // Free packet list
+  if (packet_list != NULL) {
+    delete_packet_nodes(packet_list);
+  }
+
+  // Exit key event thread
+  pthread_cancel(key_event_thread);
+  pthread_join(key_event_thread, NULL);
+
+  // Close ncurses window
+  delete_windows();
+
+  // Close session
+  pcap_close(packet_capture_handle);
+
+  if (exceeded_max_rows) {
+    printf("Reached maximum number of packets %d\n", MAX_ROWS);
+  }
+
+  printf("Closing packet sniffer \n");
+  exit(0);
+}
+
 void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
   
@@ -791,6 +844,11 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
     packet_list = new_node;
     last_node = new_node;
     first_ts_set = 1;
+  }
+
+  if (get_packet_list_length(0, packet_list) >= MAX_ROWS) {
+    exceeded_max_rows = 1;
+    close_program();
   }
 
   // Update pad display with new packet
@@ -995,55 +1053,6 @@ void update_after_key_press() {
     }
     refresh_pad();
     display_header_info();
-}
-
-
-void delete_windows() {
-  if (pad != NULL) {
-    werase(pad);
-    delwin(pad);
-  }
-  if (win_title != NULL) {
-    werase(win_title);
-    delwin(win_title);
-  }
-  if (info_pad != NULL) {
-    werase(info_pad);
-    delwin(info_pad);
-  }
-  if (win_key != NULL) {
-    werase(win_key);
-    delwin(win_key);
-  }
-  if (win_packet_num != NULL) {
-    werase(win_packet_num);
-    delwin(win_packet_num);
-  }
-  if (stats != NULL) {
-    werase(stats);
-    delwin(stats);
-  }
-  endwin();
-}
-
-void close_program() {
-  // Free packet list
-  if (packet_list != NULL) {
-    delete_packet_nodes(packet_list);
-  }
-
-  // Exit key event thread
-  pthread_cancel(key_event_thread);
-  pthread_join(key_event_thread, NULL);
-
-  // Close ncurses window
-  delete_windows();
-
-  // Close session
-  pcap_close(packet_capture_handle);
-
-  printf("Closing packet sniffer \n");
-  exit(0);
 }
 
 void handle_sort() {
