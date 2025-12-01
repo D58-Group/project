@@ -64,6 +64,7 @@ WINDOW *info_pad = NULL;
 WINDOW *win_key = NULL;
 WINDOW *stats = NULL;
 WINDOW *win_packet_num = NULL;
+FILE *f;
 int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
@@ -707,15 +708,6 @@ static void ts_update(double t_rel,
 
 void refresh_stats_window() {
   wrefresh(stats);
-  // mvwprintw(stats, 0, 0, "Packets: %d", total_pkts);
-  // mvwprintw(stats, 0, 20, "Bytes: %d", total_bytes);
-  // mvwprintw(stats, 0, 40, "IPv4: %d", total_ipv4_count);
-  // mvwprintw(stats, 0, 60, "ARP: %d", total_arp_count);
-  // mvwprintw(stats, 0, 80, "TCP: %d", total_tcp_count);
-  // mvwprintw(stats, 0, 100, "UDP: %d", total_udp_count);
-  // mvwprintw(stats, 1, 0, "ICMP: %d", total_icmp_count);
-  // mvwprintw(stats, 1, , "OTHER L4: %d", total_other_l4);
-  // mvwprintw(stats, 1, 100, "HTTP: %d", total_http_count);
   mvwprintw(stats, 0, 0, "Packets");
   mvwprintw(stats, 0, 12, "IPv4");
   mvwprintw(stats, 0, 22, "ARP");
@@ -773,6 +765,9 @@ void delete_windows() {
 }
 
 void close_program() {
+  // Close file
+  fclose(f);
+
   // Free packet list
   if (packet_list != NULL) {
     delete_packet_nodes(packet_list);
@@ -821,6 +816,9 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
   ts_update(t, packet, header);
+
+  // Add to text file
+  fprintf(f, "%f %ld %ld %ld %ld %ld %ld %ld %ld\n", t, total_pkts, total_bytes, total_ipv4_count, total_arp_count, total_tcp_count, total_udp_count, total_icmp_count, total_http_count);
 
   // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
@@ -1232,6 +1230,14 @@ int main(int argc, char* argv[]) {
   if (terminal_x < MAX_COLS || terminal_y < INFO_PAD_Y + INFO_ROWS_TO_DISPLAY) {
     endwin();
     printf("Increase terminal size and run again in order to view packets properly\n");
+    exit(0);
+  }
+
+  // Open file to write stats
+  f = fopen("stats.txt", "w");
+  if (f == NULL) {
+    endwin();
+    printf("Error creating file\n");
     exit(0);
   }
 
