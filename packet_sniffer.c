@@ -39,6 +39,16 @@ typedef struct ts_bin {
     struct ts_bin *next;
 } ts_bin_t;
 
+static uint64_t total_pkts         = 0;
+static uint64_t total_bytes        = 0;
+static uint64_t total_ipv4_count   = 0;
+static uint64_t total_arp_count    = 0;
+static uint64_t total_tcp_count    = 0;
+static uint64_t total_udp_count    = 0;
+static uint64_t total_icmp_count   = 0;
+static uint64_t total_other_l4     = 0;
+static uint64_t total_http_count   = 0;
+
 static ts_bin_t *ts_head = NULL;
 static ts_bin_t *ts_tail = NULL;
 static pthread_mutex_t ts_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -642,11 +652,17 @@ static void ts_update(double t_rel,
     bin->pkt_count++;
     bin->byte_count += hdr->len;
 
+    total_pkts++;
+    total_bytes += hdr->len;
+
    //l1
-    if (is_ipv4(packet, hdr->len))
+    if (is_ipv4(packet, hdr->len)) {
         bin->ipv4_count++;
-    else if (is_arp(packet, hdr->len))
+        total_ipv4_count++;
+    } else if (is_arp(packet, hdr->len)) {
         bin->arp_count++;
+        total_arp_count++;
+    }
 
     //l4
     uint8_t p = 0;
@@ -655,15 +671,26 @@ static void ts_update(double t_rel,
             (const sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
         p = ip->ip_p;
 
-        if      (p == 6)  bin->tcp_count++;
-        else if (p == 17) bin->udp_count++;
-        else if (p == 1)  bin->icmp_count++;
-        else              bin->other_l4_count++;
+        if (p == 6) {
+            bin->tcp_count++;
+            total_tcp_count++;
+        } else if (p == 17) {
+            bin->udp_count++;
+            total_udp_count++;
+        } else if (p == 1) {
+            bin->icmp_count++;
+            total_icmp_count++;
+        } else {
+            bin->other_l4_count++;
+            total_other_l4++;
+        }
     }
 
     /* HTTP */
-    if (is_http(packet, hdr->len))
+    if (is_http(packet, hdr->len)) {
         bin->http_count++;
+        total_http_count++;
+    }
 
     pthread_mutex_unlock(&ts_lock);
 }
