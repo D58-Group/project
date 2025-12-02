@@ -195,11 +195,14 @@ typedef struct sr_arp_hdr sr_arp_hdr_t;
 
 
 struct sr_tcp_hdr {
+#ifndef TH_SYN
+#define TH_SYN 0x02
+#endif
   uint16_t tcp_src;    /* source port */
   uint16_t tcp_dst;    /* dest port   */
   uint32_t tcp_seq;    /* sequence    */
   uint32_t tcp_ack;    /* ack number  */
-  uint8_t  tcp_off;    /* data offset */
+  uint8_t  tcp_off;    /* data offset (high 4 bits) + reserved (low 4 bits) */
   uint8_t  tcp_flags;  /* flags       */
   uint16_t tcp_win;    /* window      */
   uint16_t tcp_sum;    /* checksum    */
@@ -217,5 +220,29 @@ enum protocol {
   HTTP,
   OTHER
 };
+
+struct tcp_segment {
+  uint32_t id;               // frame number
+  uint32_t seq;              // tcp sequence number
+  uint32_t len;              // data length
+  uint8_t* data;             // data
+  struct tcp_segment* next;  // next segment
+} typedef tcp_segment_t;
+
+struct tcp_stream {
+  // used to identify the stream
+  uint32_t src_ip;     // source IP address
+  uint32_t dest_ip;    // destination IP address
+  uint16_t src_port;   // source port
+  uint16_t dest_port;  // destination port
+
+  // reassembly info
+  tcp_segment_t* segments;  // linked list of segments
+  uint32_t init_seq;        // initial sequence number
+  uint32_t next_seq;        // next expected sequence number
+  uint8_t* http_buf;        // reassembled HTTP data
+  uint32_t http_buf_len;    // length of reassembled HTTP data
+  struct tcp_stream* next;
+} typedef tcp_stream_t;
 
 #endif /* -- SR_PROTOCOL_H -- */

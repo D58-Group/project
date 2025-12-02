@@ -26,8 +26,11 @@ struct packet_node {
   
   char *info; 
 
-};
-typedef struct packet_node packet_node_t;
+  // http specific
+  uint8_t* http_buf;
+  uint32_t http_buf_len;
+  tcp_segment_t* tcp_segments;
+} typedef packet_node_t;
 
 struct options {
   char* interface;

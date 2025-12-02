@@ -14,6 +14,7 @@
 #include "sorting.h"
 #include "sr_utils.h"
 #include "sr_protocol.h"
+#include "tcp_reassembly.h"
 
 #define MAX_ROWS 10000
 #define MAX_COLS 120
@@ -677,7 +678,7 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   if (!match_protocol(packet, header->len, opts->protocol)) {
       return;
   }
-
+ 
   // static state for numbering and time
   static unsigned int packet_count = 0;
   static struct timeval first_ts;
@@ -700,6 +701,12 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   create_packet_node(packet, header, packet_count, t);
   add_to_packet_list(new_node);
   pthread_mutex_unlock(&packet_list_lock);
+
+
+  if (match_protocol(packet, header->len, "tcp")) {
+    // fprintf(stderr, "Processing TCP packet number %u\n", packet_count);
+    process_tcp_packet(new_node);
+  }
 
   if (!new_node) {
     //mem fail
@@ -1107,5 +1114,6 @@ int main(int argc, char* argv[]) {
 
   // Free device list
   pcap_freealldevs(devices);
+  free_all_tcp_streams();
   return 0;
 }
