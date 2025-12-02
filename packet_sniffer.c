@@ -16,7 +16,7 @@
 #include "sr_protocol.h"
 #include "tcp_reassembly.h"
 
-#define MAX_ROWS 10000
+#define MAX_ROWS 30000
 #define MAX_COLS 120
 #define TS_WINDOW_SEC 1.0
 
@@ -33,12 +33,20 @@ typedef struct ts_bin {
     uint64_t tcp_count;
     uint64_t udp_count;
     uint64_t icmp_count;
-    uint64_t other_l4_count;
 
     uint64_t http_count;
 
     struct ts_bin *next;
 } ts_bin_t;
+
+static uint64_t total_pkts         = 0;
+static uint64_t total_bytes        = 0;
+static uint64_t total_ipv4_count   = 0;
+static uint64_t total_arp_count    = 0;
+static uint64_t total_tcp_count    = 0;
+static uint64_t total_udp_count    = 0;
+static uint64_t total_icmp_count   = 0;
+static uint64_t total_http_count   = 0;
 
 static ts_bin_t *ts_head = NULL;
 static ts_bin_t *ts_tail = NULL;
@@ -49,6 +57,7 @@ static pthread_mutex_t ts_lock = PTHREAD_MUTEX_INITIALIZER;
 packet_node_t *packet_list = NULL;
 packet_node_t *last_node = NULL;
 int pad_length = 0;
+pcap_t* packet_capture_handle;
 WINDOW *pad = NULL;
 WINDOW *win_title = NULL;
 WINDOW *info_pad = NULL;
@@ -67,19 +76,23 @@ const int SOURCE_INDEX = 30;
 const int DESTINATION_INDEX = 60;
 const int PROTOCOL_INDEX = 90;
 const int LENGTH_INDEX = 105;
+const int STATS_X = 0;
+const int STATS_Y = 0;
+const int STATS_ROWS = 4;
+const int STATS_COLS = MAX_COLS;
 const int PAD_ROWS_TO_DISPLAY = 15;
 const int INFO_ROWS_TO_DISPLAY = 15;
 const int INFO_PAD_ROWS = 100;
 const int INFO_PAD_COLS = 80;
 const int TITLE_PAD_ROWS = 1;
 const int TITLE_PAD_X = 0;
-const int TITLE_PAD_Y = 0;
+const int TITLE_PAD_Y = STATS_Y + STATS_ROWS;
 const int PAD_X = 0;
-const int PAD_Y = 2;
+const int PAD_Y = TITLE_PAD_Y + 2;
 const int PACKET_NUM_ROWS = 2;
 const int PACKET_NUM_COLS = 50;
 const int PACKET_NUM_X = 0;
-const int PACKET_NUM_Y =  TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
+const int PACKET_NUM_Y =  PAD_Y + PAD_ROWS_TO_DISPLAY + 3;
 const int INFO_PAD_X = 0;
 const int INFO_PAD_Y = PACKET_NUM_Y + PACKET_NUM_ROWS + 1;
 const int KEY_X = 80;
@@ -651,11 +664,17 @@ static void ts_update(double t_rel,
     bin->pkt_count++;
     bin->byte_count += hdr->len;
 
+    total_pkts++;
+    total_bytes += hdr->len;
+
    //l1
-    if (is_ipv4(packet, hdr->len))
+    if (is_ipv4(packet, hdr->len)) {
         bin->ipv4_count++;
-    else if (is_arp(packet, hdr->len))
+        total_ipv4_count++;
+    } else if (is_arp(packet, hdr->len)) {
         bin->arp_count++;
+        total_arp_count++;
+    }
 
     //l4
     uint8_t p = 0;
@@ -664,17 +683,64 @@ static void ts_update(double t_rel,
             (const sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
         p = ip->ip_p;
 
-        if      (p == 6)  bin->tcp_count++;
-        else if (p == 17) bin->udp_count++;
-        else if (p == 1)  bin->icmp_count++;
-        else              bin->other_l4_count++;
+        if (p == 6) {
+            bin->tcp_count++;
+            total_tcp_count++;
+        } else if (p == 17) {
+            bin->udp_count++;
+            total_udp_count++;
+        } else if (p == 1) {
+            bin->icmp_count++;
+            total_icmp_count++;
+        }
     }
 
     /* HTTP */
-    if (is_http(packet, hdr->len))
+    if (is_http(packet, hdr->len)) {
         bin->http_count++;
+        total_http_count++;
+    }
 
     pthread_mutex_unlock(&ts_lock);
+}
+
+void refresh_stats_window() {
+  wrefresh(stats);
+  // mvwprintw(stats, 0, 0, "Packets: %d", total_pkts);
+  // mvwprintw(stats, 0, 20, "Bytes: %d", total_bytes);
+  // mvwprintw(stats, 0, 40, "IPv4: %d", total_ipv4_count);
+  // mvwprintw(stats, 0, 60, "ARP: %d", total_arp_count);
+  // mvwprintw(stats, 0, 80, "TCP: %d", total_tcp_count);
+  // mvwprintw(stats, 0, 100, "UDP: %d", total_udp_count);
+  // mvwprintw(stats, 1, 0, "ICMP: %d", total_icmp_count);
+  // mvwprintw(stats, 1, , "OTHER L4: %d", total_other_l4);
+  // mvwprintw(stats, 1, 100, "HTTP: %d", total_http_count);
+  mvwprintw(stats, 0, 0, "Packets");
+  mvwprintw(stats, 0, 12, "IPv4");
+  mvwprintw(stats, 0, 22, "ARP");
+  mvwprintw(stats, 0, 32, "TCP");
+  mvwprintw(stats, 0, 42, "UDP");
+  mvwprintw(stats, 0, 52, "ICMP");
+  mvwprintw(stats, 0, 62, "HTTP");
+  mvwprintw(stats, 0, 72, "Bytes");
+  mvwprintw(stats, 1, 0, "%d", total_pkts);
+  mvwprintw(stats, 1, 12, "%d", total_ipv4_count);
+  mvwprintw(stats, 1, 22, "%d", total_arp_count);
+  mvwprintw(stats, 1, 32, "%d", total_tcp_count);
+  mvwprintw(stats, 1, 42, "%d", total_udp_count);
+  mvwprintw(stats, 1, 52, "%d", total_icmp_count);
+  mvwprintw(stats, 1, 62, "%d", total_http_count);
+  mvwprintw(stats, 1, 72, "%d", total_bytes);
+  wmove(stats, 3, 0);
+  whline(stats, '-', MAX_COLS);
+  wrefresh(stats);
+}
+
+void create_stats_window() {
+  // Print header of table for packet list
+  stats = newwin(STATS_ROWS, STATS_COLS, STATS_Y, STATS_X);
+  werase(stats);
+  refresh_stats_window();
 }
 
 void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
@@ -729,11 +795,14 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
 
   // Update pad display with new packet
   update_pad();
+
+  // Update stats
+  refresh_stats_window();
 }
 
 void display_sniffer_header() {
   // Print header of table for packet list
-  win_title = newwin(TITLE_PAD_ROWS, MAX_COLS, TITLE_PAD_X, TITLE_PAD_Y);
+  win_title = newwin(TITLE_PAD_ROWS, MAX_COLS, TITLE_PAD_Y, TITLE_PAD_X);
   werase(win_title);
   wrefresh(win_title);
   mvwprintw(win_title, 0, PACKET_NUM_INDEX, "Number");
@@ -752,6 +821,8 @@ void display_packet_number() {
   werase(win_packet_num);
   wrefresh(win_packet_num);
   mvwprintw(win_packet_num, 0, 0, "  PACKET INFORMATION");
+  wmove(win_packet_num, 1, 0);
+  whline(win_packet_num, '-', PACKET_NUM_COLS - 1);
   wrefresh(win_packet_num);
 }
 
@@ -810,6 +881,8 @@ void display_header_info() {
   // Display packet number title
   werase(win_packet_num);
   mvwprintw(win_packet_num, 0, 0, "  PACKET NUMBER %d", node->number);
+  wmove(win_packet_num, 1, 0);
+  whline(win_packet_num, '-', PACKET_NUM_COLS - 1);
   wrefresh(win_packet_num);
 
   current_info_line = 0;
@@ -898,6 +971,9 @@ void initialize_windows() {
     exit(1);
   }
 
+  // Initialize window for stats
+  create_stats_window();
+
   // Initialize header with titles for columns
   display_sniffer_header();
 
@@ -943,6 +1019,10 @@ void delete_windows() {
     werase(win_packet_num);
     delwin(win_packet_num);
   }
+  if (stats != NULL) {
+    werase(stats);
+    delwin(stats);
+  }
   endwin();
 }
 
@@ -958,6 +1038,9 @@ void close_program() {
 
   // Close ncurses window
   delete_windows();
+
+  // Close session
+  pcap_close(packet_capture_handle);
 
   printf("Closing packet sniffer \n");
   exit(0);
@@ -1074,7 +1157,6 @@ int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
   pcap_if_t* devices;  // all devices
   pcap_if_t* device;   // selected device
-  pcap_t* packet_capture_handle;
   int promisc = 1;  // promiscuous mode
   int to_ms = 750;  // read timeout in ms
   // struct pcap_pkthdr hdr;
