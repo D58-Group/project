@@ -890,11 +890,16 @@ void close_program() {
 
   // Close ncurses window
   delete_windows();
-  
-  printf("current_line: %d\n", current_line);
 
   printf("Closing packet sniffer \n");
   exit(0);
+}
+
+void handle_sort() {
+  sort_packet_list(current_sort_key, current_sort_ascending);
+  current_line = 0;
+  update_pad();
+  update_after_key_press();
 }
 
 void *handle_key_event(void *arg) {
@@ -922,58 +927,47 @@ void *handle_key_event(void *arg) {
         break;
       case '1':
         current_sort_key = SORT_BY_NUMBER;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case '2':
         current_sort_key = SORT_BY_TIME;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case '3':
         current_sort_key = SORT_BY_SRC;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case '4':
         current_sort_key = SORT_BY_DST;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case '5':
         current_sort_key = SORT_BY_PROTO;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case '6':
         current_sort_key = SORT_BY_LENGTH;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case '7':
         current_sort_key = SORT_BY_INFO;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case 'a':
         current_sort_ascending = 1;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case 'A':
         current_sort_ascending = 1;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case 'd':
         current_sort_ascending = 0;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case 'D':
         current_sort_ascending = 0;
-        sort_packet_list(current_sort_key, current_sort_ascending);
-        update_after_key_press();
+        handle_sort();
         break;
       case KEY_LEFT:
         if (current_info_line <= 0) {
