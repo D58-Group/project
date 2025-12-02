@@ -138,6 +138,10 @@ void print_hdr_icmp(uint8_t *buf) {
   fprintf(stderr, "\tcode: %d\n", icmp_hdr->icmp_code);
   /* Keep checksum in NBO */
   fprintf(stderr, "\tchecksum: %d\n", icmp_hdr->icmp_sum);
+
+  // if (icmp_hdr->type == icmp_type_3) {
+  //   fr
+  // }
 }
 
 
@@ -291,6 +295,79 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
   }
   else {
     fprintf(stderr, "Unrecognized Ethernet Type: %d\n", ethtype);
+  }
+}
+
+////////////////////////////////////////////////////////////////////////
+// For ncurses display
+//////////////////////////////////////////////
+enum protocol get_protocol(const uint8_t *packet) {
+  uint16_t ether_type = ethertype((uint8_t *)packet);
+  if (ether_type == ethertype_arp) {
+    return ARP;
+  } else if (ether_type == ethertype_ip) {
+    uint8_t ip_proto = ip_protocol((uint8_t *)packet + sizeof(sr_ethernet_hdr_t));
+    if (ip_proto == ip_protocol_icmp) {
+      return ICMP;
+    } else if (ip_proto == ip_protocol_udp) {
+      return UDP;
+    } else if (ip_proto == ip_protocol_tcp) {
+      return TCP;
+    } else {
+      return IPV4;
+    }
+  } 
+  return OTHER;
+}
+
+/* Prints out formatted Ethernet address, e.g. 00:11:22:33:44:55 */
+void convert_addr_eth_to_str(uint8_t *addr, char *str_addr) {
+  strcpy(str_addr, "");
+  char buf[100];
+  int pos = 0;
+  uint8_t cur;
+  for (; pos < ETHER_ADDR_LEN; pos++) {
+    cur = addr[pos];
+    if (pos > 0)
+      strcat(str_addr, ":");
+    sprintf(buf, "%02X", cur);
+    strcat(str_addr, buf);
+  }
+}
+
+void convert_addr_ip_int_to_str(uint32_t ip, char *str_addr) {
+  uint32_t curOctet = ip >> 24;
+  strcpy(str_addr, "");
+  char buf[100];
+  sprintf(buf, "%d.", curOctet);
+  strcat(str_addr, buf);
+  curOctet = (ip << 8) >> 24;
+  sprintf(buf, "%d.", curOctet);
+  strcat(str_addr, buf);
+  curOctet = (ip << 16) >> 24;
+  sprintf(buf, "%d.", curOctet);
+  strcat(str_addr, buf);
+  curOctet = (ip << 24) >> 24;
+  sprintf(buf, "%d\n", curOctet);
+  strcat(str_addr, buf);
+}
+
+void get_source_dest(char *src, char *dst, const uint8_t *packet) {
+  uint16_t ether_type = ethertype((uint8_t *)packet);
+   if (ether_type == ethertype_arp) {
+     sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+     // sender mac
+    convert_addr_eth_to_str(arp_hdr->ar_sha, src);
+     // destination mac
+    convert_addr_eth_to_str(arp_hdr->ar_tha, dst);
+  } else if (ether_type == ethertype_ip) {
+    sr_ip_hdr_t *iphdr = (sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
+    // sender ip address
+    convert_addr_ip_int_to_str(ntohl(iphdr->ip_src), src);
+    // destination ip address
+    convert_addr_ip_int_to_str(ntohl(iphdr->ip_dst), dst);
+  } else {
+    //TODO
   }
 }
 

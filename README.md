@@ -30,3 +30,4 @@ Usage: ./packet_sniffer [-i [interface]] [-o <filename>] [-p <protocol>] [-t <du
 
 - <https://www.tcpdump.org/manpages/pcap_findalldevs.3pcap.html>
 - <https://www.tcpdump.org/pcap.html>
+- https://tldp.org/HOWTO/NCURSES-Programming-HOWTO/index.html

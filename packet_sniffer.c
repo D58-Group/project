@@ -2,8 +2,11 @@
 
 #include <arpa/inet.h>
 #include <errno.h>
+#include <math.h>
 #include <ncurses.h>
 #include <pcap.h>
+#include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,10 +14,48 @@
 #include "sorting.h"
 #include "sr_utils.h"
 #include "sr_protocol.h"
-#include <math.h>
-#include <pthread.h>
 
-packet_node_t* packet_list = NULL;
+#define MAX_ROWS 10000
+#define MAX_COLS 120
+
+/* Global Variables */
+packet_node_t *packet_list = NULL;
+packet_node_t *last_node = NULL;
+int pad_length = 0;
+WINDOW *pad = NULL;
+WINDOW *win_title = NULL;
+WINDOW *info_pad = NULL;
+WINDOW *win_key = NULL;
+WINDOW *stats = NULL;
+int current_line = 0;
+int previous_line = -1;
+int top_line = 0;
+int current_info_line = 0;
+int max_info_lines = 0;
+pthread_t key_event_thread;
+const int PACKET_NUM_INDEX = 0;
+const int TIME_INDEX = 10;
+const int SOURCE_INDEX = 30;
+const int DESTINATION_INDEX = 60;
+const int PROTOCOL_INDEX = 90;
+const int LENGTH_INDEX = 105;
+const int PAD_ROWS_TO_DISPLAY = 20;
+const int INFO_ROWS_TO_DISPLAY = 20;
+const int INFO_PAD_ROWS = 100;
+const int INFO_PAD_COLS = 80;
+const int TITLE_PAD_ROWS = 1;
+const int TITLE_PAD_X = 0;
+const int TITLE_PAD_Y = 0;
+const int PAD_X = 0;
+const int PAD_Y = 2;
+const int INFO_PAD_X = 0;
+const int INFO_PAD_Y = TITLE_PAD_ROWS + PAD_ROWS_TO_DISPLAY + 3;
+const int KEY_X = 80;
+const int KEY_Y = INFO_PAD_Y;
+const int KEY_ROWS = 15;
+const int KEY_COLS = MAX_COLS - KEY_X;
+
+/* Command Line Argument Functions */
 
 pthread_mutex_t packet_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -84,12 +125,8 @@ static int cmp_uint32(uint32_t a, uint32_t b) {
     return 0;
 }
 
-
-static int packet_node_cmp(const void *pa, const void *pb) {
-    const packet_node_t *a = *(const packet_node_t * const *)pa;
-    const packet_node_t *b = *(const packet_node_t * const *)pb;
-
-    int result = 0;
+static int packet_node_cmp(packet_node_t *a, packet_node_t *b) {
+ int result = 0;
 
     switch (current_sort_key) {
         case SORT_BY_NUMBER:
@@ -136,6 +173,13 @@ static int packet_node_cmp(const void *pa, const void *pb) {
     return result;
 }
 
+static int packet_cmp(const void *pa, const void *pb) {
+    const packet_node_t *a = *(const packet_node_t * const *)pa;
+    const packet_node_t *b = *(const packet_node_t * const *)pb;
+
+    return packet_node_cmp((packet_node_t *) a, (packet_node_t *) b);
+}
+
 void sort_packet_list(sort_key_t key, int ascending) {
     pthread_mutex_lock(&packet_list_lock);
 
@@ -156,7 +200,7 @@ void sort_packet_list(sort_key_t key, int ascending) {
     current_sort_key = key;
     current_sort_ascending = ascending ? 1 : 0;
 
-    qsort(arr, n, sizeof(packet_node_t *), packet_node_cmp);
+    qsort(arr, n, sizeof(packet_node_t *), packet_cmp);
 
     packet_list = array_to_packet_list(arr, n);
 
@@ -212,10 +256,8 @@ pcap_if_t* find_device_by_name(pcap_if_t* devices, const char* name) {
   return NULL;
 }
 
-packet_node_t* add_packet_node(const uint8_t* packet,
+packet_node_t* create_packet_node(const uint8_t* packet,
                                const struct pcap_pkthdr* packet_hdr,
-                               packet_node_t* prev,
-                               packet_node_t* next,
                                unsigned int number,
                                double rel_time) {
   packet_node_t* node = malloc(sizeof(packet_node_t));
@@ -241,6 +283,8 @@ packet_node_t* add_packet_node(const uint8_t* packet,
   node->src_ip = 0;
   node->dst_ip = 0;
   node->proto  = 0;
+  memset(node->ar_sha, 0, ETHER_ADDR_LEN);
+  memset(node->ar_tha, 0, ETHER_ADDR_LEN);
 
   //IP handling
   if (packet_hdr->len >= sizeof(sr_ethernet_hdr_t)) {
@@ -254,21 +298,81 @@ packet_node_t* add_packet_node(const uint8_t* packet,
       node->src_ip = ntohl(ip->ip_src);
       node->dst_ip = ntohl(ip->ip_dst);
       node->proto  = ip->ip_p;
+    } else if (ethtype_val == ethertype_arp &&
+      packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
+      sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(node->packet + sizeof(sr_ethernet_hdr_t));
+      node->proto = (uint8_t)ethertype_arp;
+      node->src_ip = ntohl(arp_hdr->ar_sip);
+      node->dst_ip = ntohl(arp_hdr->ar_tip);
+      memcpy(node->ar_sha, arp_hdr->ar_sha, ETHER_ADDR_LEN);
+      memcpy(node->ar_tha, arp_hdr->ar_tha, ETHER_ADDR_LEN);
+    }
+    else {
+      node->proto = ethtype_val;
     }
   }
 
-  //add to packet list
+  node->proto = get_protocol(node->packet);
+  node->info = format_hdrs_to_string(node->packet, node->length);
+
+  node->next = NULL;
+  node->prev = NULL;
+  return node;
+}
+
+void get_position_for_new_node(packet_node_t *new_node, packet_node_t **prev, packet_node_t **next) {
+  packet_node_t *a = NULL;
+  packet_node_t *b = new_node;
+  packet_node_t *c = packet_list;
+
+  if (b == NULL || c == NULL) {
+    *prev = NULL;
+    *next = NULL;
+    return;
+  }
+
+  // Traverse through list to determine where to insert new node
+  while(c != NULL) {
+    if (packet_node_cmp(b, c) != 1) {
+      *prev = a;
+      *next = c;
+      return;
+    }
+    a = c;
+    c = c->next;
+  }
+  *prev = a;
+  *next = c;
+}
+
+void add_to_packet_list(packet_node_t *node) {
+  packet_node_t *prev = NULL;
+  packet_node_t *next = NULL;
+
+  // Get prev and next values for new node
+  get_position_for_new_node(node, &prev, &next);
+
+  // Add to packet list
   node->prev = prev;
   node->next = next;
+
+  // Update other nodes to point to new node
+  if (prev) {
+    prev->next = node;
+  }
   if (next) {
     next->prev = node;
   }
+
+  // If node is at the beginning of the list, set it at the head
   if (packet_list == next || packet_list == NULL) {
     packet_list = node;
   }
-  
-  node->info = format_hdrs_to_string(node->packet, node->length);
-  return node;
+
+  // If node is at the end of list, set it as the last node
+  if (last_node == prev || last_node == NULL) {
+    last_node = node;
+  }
 }
 
 void delete_packet_nodes(packet_node_t* node) {
@@ -292,6 +396,16 @@ int get_packet_list_length(int length, packet_node_t* node) {
   return get_packet_list_length(length + 1, node->next);
 }
 
+packet_node_t *get_packet_by_index(int index) {
+  int count = 0;
+  packet_node_t *node = packet_list;
+  while (node->next != NULL && count < index) {
+    node = node->next;
+    count += 1;
+  }
+  return node;
+}
+
 void print_packet_node(packet_node_t* node) {
   printw("packet: \n");
   printw("timestamp: %d\n", (long)node->hdr.ts.tv_sec);
@@ -308,11 +422,104 @@ void print_available_devices(pcap_if_t* devices) {
   }
 }
 
+void refresh_pad() {
+  // Make sure current line is visible
+  if (current_line < 0) {
+    current_line = 0;
+  } else if (current_line >= pad_length) {
+    current_line = pad_length - 1;
+  }
 
-void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
+  // Highlight the current line
+  if (has_colors()) {
+     mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+  }
+
+  // Move the view of the pad if the current line isn't visible
+  if (current_line < top_line) {
+    top_line = current_line;
+  }
+  if (current_line > top_line + PAD_ROWS_TO_DISPLAY - 1) {
+    top_line = current_line - PAD_ROWS_TO_DISPLAY + 1;
+  }
+
+  // Refresh the pad
+  prefresh(pad, top_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY, MAX_COLS - 1);
+}
+
+void print_pad_row(packet_node_t *node){
+  // Highlight current row
+  if (has_colors() && pad_length == current_line) {
+    attron(COLOR_PAIR(1));
+  }
+
+  // Print number and time
+  char buf[100];
+  mvwprintw(pad, pad_length, PACKET_NUM_INDEX, "%u", node->number);
+  mvwprintw(pad, pad_length, TIME_INDEX, "%lf", node->time_rel);
+
+  // Print source and destination
+  char src[120];
+  char dst[120];
+  uint8_t proto = node->proto;
+  if (proto == ARP) {
+    convert_addr_eth_to_str(node->ar_sha, src);
+    convert_addr_eth_to_str(node->ar_tha, dst);
+  } else if (proto == ICMP || TCP || UDP || IPV4) {
+    convert_addr_ip_int_to_str(node->src_ip, src);
+    convert_addr_ip_int_to_str(node->dst_ip, dst);
+  } else {
+    // TODO handle other cases
+  }
+
+  mvwprintw(pad, pad_length, SOURCE_INDEX, "%s", src);
+  mvwprintw(pad, pad_length, DESTINATION_INDEX, "%s", dst);
+
+  // Print protocol
+  if (proto == ARP) {
+    sprintf(buf, "%s", "ARP");
+  } else if (proto == ICMP) {
+    sprintf(buf, "%s", "ICMP");
+  } else if (proto == TCP) {
+    sprintf(buf, "%s", "TCP");
+  } else if (proto == UDP) {
+    sprintf(buf, "%s", "UDP");
+  } else if (proto == IPV4) {
+    sprintf(buf, "%s", "IPv4");
+  } else {
+    sprintf(buf, "%s", "OTHER");
+  }
+
+  mvwprintw(pad, pad_length, PROTOCOL_INDEX, "%s", buf);
+
+  // Print length
+  mvwprintw(pad, pad_length, LENGTH_INDEX, "%d", node->length);
+
+  // Turn off highlighting
+  if (has_colors() && pad_length == current_line) {
+    attroff(COLOR_PAIR(1));
+  }
+
+  pad_length += 1;
+}
+
+void update_pad() {
+  werase(pad);
+  pad_length = 0;
+  packet_node_t* node = packet_list;
+
+  // Print each row of packet list
+  while (node != NULL) {
+    print_pad_row(node);
+    node = node->next;
+  }
+  refresh_pad();
+}
+
+void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
   
-  options_t *opts = (options_t *)args_unused;
+  options_t *opts = (options_t *)args;
 
   // filter first: only keep packets that match
   if (!match_protocol(packet, header->len, opts->protocol)) {
@@ -328,42 +535,329 @@ void handle_packet(uint8_t* args_unused, const struct pcap_pkthdr* header,
 
   if (!first_ts_set) {
     first_ts = header->ts;
-    first_ts_set = 1;
   }
 
   double t = (header->ts.tv_sec  - first_ts.tv_sec) +
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
-  // add to packet list 
+  // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
   packet_node_t* new_node =
-    add_packet_node(packet, header, NULL, packet_list, packet_count, t);
+  create_packet_node(packet, header, packet_count, t);
+  add_to_packet_list(new_node);
   pthread_mutex_unlock(&packet_list_lock);
-
 
   if (!new_node) {
     //mem fail
     return;
   }
 
-  printf("Got packet of length %u\n", header->len);
-  fflush(stdout);
+  if (!first_ts_set) {
+    packet_list = new_node;
+    last_node = new_node;
+    first_ts_set = 1;
+  }
 
-  print_hdrs((uint8_t*)packet, header->len);
-  /* Uncomment below for ncurses ui */
-  // printw("length: %d \n", header->len);
-  // printw("list length: %d\n", get_packet_list_length(0, new_node));
-  // print_packet_node(new_node);
-  // refresh();
-  // getch();
-  // endwin();
+  // Update pad display with new packet
+  update_pad();
+}
+
+void display_sniffer_header() {
+  // Print header of table for packet list
+  win_title = newwin(TITLE_PAD_ROWS, MAX_COLS, TITLE_PAD_X, TITLE_PAD_Y);
+  werase(win_title);
+  wrefresh(win_title);
+  // box(win_title, '|', '-');  
+  mvwprintw(win_title, 0, PACKET_NUM_INDEX, "Number");
+  mvwprintw(win_title, 0, TIME_INDEX, "Time");
+  mvwprintw(win_title, 0, SOURCE_INDEX, "Source");
+  mvwprintw(win_title, 0, DESTINATION_INDEX, "Destination");
+  mvwprintw(win_title, 0, PROTOCOL_INDEX, "Protocol");
+  mvwprintw(win_title, 0, LENGTH_INDEX, "Length");
+  
+  wrefresh(win_title);
+}
+
+void display_key_window() {
+  // Print list of key commands
+  win_key = newwin(KEY_ROWS, KEY_COLS, KEY_Y, KEY_X);
+  werase(win_key);
+  wrefresh(win_key);
+  box(win_key, '|', '-');  
+  mvwprintw(win_key, 0, 0, "KEY COMMANDS");
+  mvwprintw(win_key, 1, 2, "UP KEY");
+  mvwprintw(win_key, 1, 13, "Scroll Up");
+  mvwprintw(win_key, 2, 2, "DOWN KEY");
+  mvwprintw(win_key, 2, 13, "Scroll Down");
+  mvwprintw(win_key, 3, 2, "1");
+  mvwprintw(win_key, 3, 13, "Sort by Number");
+  mvwprintw(win_key, 4, 2, "2");
+  mvwprintw(win_key, 4, 13, "Sort by Time");
+  mvwprintw(win_key, 5, 2, "3");
+  mvwprintw(win_key, 5, 13, "Sort by Source");
+  mvwprintw(win_key, 6, 2, "4");
+  mvwprintw(win_key, 6, 13, "Sort by Destination");
+  mvwprintw(win_key, 7, 2, "5");
+  mvwprintw(win_key, 7, 13, "Sort by Protocol");
+  mvwprintw(win_key, 8, 2, "6");
+  mvwprintw(win_key, 8, 13, "Sort by Length");
+  mvwprintw(win_key, 9, 2, "7");
+  mvwprintw(win_key, 9, 13, "Sort by Packet Info");
+  mvwprintw(win_key, 10, 2, "a");
+  mvwprintw(win_key, 10, 13, "Sort in Ascending Order");
+  mvwprintw(win_key, 11, 2, "d");
+  mvwprintw(win_key, 11, 13, "Sort in Descending Order");
+  mvwprintw(win_key, 12, 2, "LEFT KEY");
+  mvwprintw(win_key, 12, 13, "Scroll Up on Packet Info");
+  mvwprintw(win_key, 13, 2, "RIGHT KEY");
+  mvwprintw(win_key, 13, 13, "Scroll Down on Packet Info");
+  wrefresh(win_key);
+}
+
+void display_header_info() {
+  // Print header information for current line
+  if (!(packet_list != NULL && current_line >= 0 && current_line < get_packet_list_length(0, packet_list))){
+    return;
+  }
+
+  packet_node_t *node = get_packet_by_index(current_line);
+  if (node == NULL) {
+    return;
+  } 
+
+  current_info_line = 0;
+  werase(info_pad);
+  mvwprintw(info_pad, 0, 2, "PACKET INFO for Packet Number %d", node->number);
+  mvwprintw(info_pad, 2, 0, "%s", node->info);
+    char *info = node->info;
+  int info_length = strlen(info);
+  char buf[info_length + 1];
+  char line[info_length + 1];
+  int line_count = 2;
+
+  sprintf(buf, "%s", "");
+  sprintf(line, "%s", "");
+
+  max_info_lines = 0;
+  for (int i = 0; i < info_length; i++) {
+    if (info[i] == '\n') {
+      mvwprintw(info_pad, line_count, 0, "%s", line);
+      line_count += 1;
+      sprintf(buf, "%s", "");
+      sprintf(line, "%s", "");
+      max_info_lines += 1;
+    } else {
+      buf[0] = info[i];
+      buf[1] = '\0';
+      strcat(line, buf);
+    }
+  }
+
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+}
+
+void refresh_info_pad() {
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+}
+
+void create_header_info_pad() {
+  // Initialize pad for header info
+  info_pad = newpad(INFO_PAD_ROWS, MAX_COLS);
+  wattron(pad, COLOR_PAIR(2));
+
+  if(info_pad == NULL) {
+    endwin();
+    fprintf(stderr, "Error creating info pad: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  // Packet Info title
+  werase(info_pad);
+  mvwprintw(info_pad, 0, 0, "PACKET INFO");
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+}
+
+/* ncurses dynamic terminal */
+void initialize_windows() {
+  // Initialize packets pad
+  pad = newpad(MAX_ROWS, MAX_COLS);
+  wattron(pad, COLOR_PAIR(2));
+
+  if(pad == NULL) {
+    endwin();
+    fprintf(stderr, "Error creating pad: %s\n", strerror(errno));
+    exit(1);
+  }
+
+  // Initialize header with titles for columns
+  display_sniffer_header();
+
+  // Initialize pad with header info
+  create_header_info_pad();
+
+  // Initialize window for keyboard legend
+  display_key_window();
+}
+
+void update_after_key_press() {
+    if (has_colors()) {
+      mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+      mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
+    }
+    refresh_pad();
+    display_header_info();
 }
 
 
+void delete_windows() {
+  if (pad != NULL) {
+    werase(pad);
+    delwin(pad);
+  }
+  if (win_title != NULL) {
+    werase(win_title);
+    delwin(win_title);
+  }
+  if (info_pad != NULL) {
+    werase(info_pad);
+    delwin(info_pad);
+  }
+  if (win_key != NULL) {
+    werase(win_key);
+    delwin(win_key);
+  }
+  endwin();
+}
 
+void close_program() {
+  // Free packet list
+  if (packet_list != NULL) {
+    delete_packet_nodes(packet_list);
+  }
 
+  // Exit key event thread
+  pthread_cancel(key_event_thread);
+  pthread_join(key_event_thread, NULL);
 
+  // Close ncurses window
+  delete_windows();
+  
+  printf("current_line: %d\n", current_line);
 
+  printf("Closing packet sniffer \n");
+  exit(0);
+}
+
+void *handle_key_event(void *arg) {
+  int key;
+  while(1) {
+    key = wgetch(stdscr);
+    switch(key) {
+      case KEY_UP:
+        if (current_line <= 0) {
+          current_line = 0;
+        } else {
+          previous_line = current_line;
+          current_line -= 1;
+        }
+        update_after_key_press();
+        break;
+      case KEY_DOWN:
+        if (current_line >= MAX_ROWS) {
+          current_line = MAX_ROWS;
+        } else {
+          previous_line = current_line;
+          current_line += 1;
+        }
+        update_after_key_press();
+        break;
+      case '1':
+        current_sort_key = SORT_BY_NUMBER;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '2':
+        current_sort_key = SORT_BY_TIME;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '3':
+        current_sort_key = SORT_BY_SRC;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '4':
+        current_sort_key = SORT_BY_DST;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '5':
+        current_sort_key = SORT_BY_PROTO;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '6':
+        current_sort_key = SORT_BY_LENGTH;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case '7':
+        current_sort_key = SORT_BY_INFO;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'a':
+        current_sort_ascending = 1;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'A':
+        current_sort_ascending = 1;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'd':
+        current_sort_ascending = 0;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case 'D':
+        current_sort_ascending = 0;
+        sort_packet_list(current_sort_key, current_sort_ascending);
+        update_after_key_press();
+        break;
+      case KEY_LEFT:
+        if (current_info_line <= 0) {
+          current_info_line = 0;
+        } else {
+          current_info_line -= 1;
+        }
+        refresh_info_pad();
+        break;
+      case KEY_RIGHT:
+        if (current_info_line >= max_info_lines - PAD_ROWS_TO_DISPLAY) {
+          current_info_line = max_info_lines - PAD_ROWS_TO_DISPLAY + 2;
+        } else {
+          current_info_line += 1;
+        }
+        refresh_info_pad();
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/* Handling Ctrl-C */
+void handle_signal(int signal) {
+ close_program();
+}
+
+void handle_resize_signal(int signal) {
+  delete_windows();
+  initialize_windows();
+  update_after_key_press();
+}
 
 int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
@@ -413,13 +907,27 @@ int main(int argc, char* argv[]) {
     exit(1);
   }
 
-  // Initiate ncurses
-  // initscr();
-  // noecho();
-  // cbreak();
-  // keypad(stdscr, TRUE);
+  // Handle ctrl-c
+  signal(SIGINT, handle_signal);
 
-  printf("pcap_open_live succeeded, starting capture loop\n");
+  // Handle resizing
+  signal(SIGWINCH, handle_resize_signal);
+
+  pthread_create(&key_event_thread, NULL, handle_key_event, NULL);
+  
+  // Initiate ncurses
+  initscr();
+  if(has_colors()) {
+    start_color();
+    init_pair(1, COLOR_MAGENTA, COLOR_BLACK);
+    init_pair(2, COLOR_WHITE, COLOR_BLACK);
+  }
+  noecho();
+  cbreak();
+  keypad(stdscr, TRUE);
+
+  // Setup windows
+  initialize_windows();
 
   // -1 means to sniff until error occurs
   int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t *)&options);

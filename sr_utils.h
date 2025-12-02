@@ -21,6 +21,11 @@ void print_hdr_udp(uint8_t *buf);
 /* prints all headers, starting from eth */
 void print_hdrs(uint8_t *buf, uint32_t length);
 
+/* Dynamic ui*/
+enum protocol get_protocol(const uint8_t *packet);
+void convert_addr_eth_to_str(uint8_t *addr, char *str_addr);
+void convert_addr_ip_int_to_str(uint32_t ip, char *str_addr);
+void get_source_dest(char *src, char *dst, const uint8_t *packet);
 //used to put the print_hdrs output in a string
 char *format_hdrs_to_string(uint8_t *buf, uint32_t length);
 

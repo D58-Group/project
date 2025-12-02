@@ -207,5 +207,15 @@ struct sr_tcp_hdr {
 } __attribute__ ((packed));
 typedef struct sr_tcp_hdr sr_tcp_hdr_t;
 
+enum protocol {
+  ETHERNET,
+  ARP,
+  IPV4,
+  ICMP,
+  TCP,
+  UDP,
+  HTTP,
+  OTHER
+};
 
 #endif /* -- SR_PROTOCOL_H -- */

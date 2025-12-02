@@ -3,6 +3,8 @@
 
 #include <pcap.h>
 #include <stdint.h>
+#include "sr_protocol.h"
+#include "sr_utils.h"
 
 struct packet_node {
   uint8_t *packet;
@@ -15,7 +17,10 @@ struct packet_node {
 
   uint32_t src_ip;             
   uint32_t dst_ip;
-  uint8_t  proto;              
+  enum protocol proto;  
+  
+  unsigned char ar_sha[ETHER_ADDR_LEN];
+  unsigned char ar_tha[ETHER_ADDR_LEN];
 
   uint32_t length;             
   
