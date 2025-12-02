@@ -199,7 +199,7 @@ struct sr_tcp_hdr {
   uint16_t tcp_dst;    /* dest port   */
   uint32_t tcp_seq;    /* sequence    */
   uint32_t tcp_ack;    /* ack number  */
-  uint8_t  tcp_offx2;  /* data offset (high 4 bits) + reserved (low 4 bits) */
+  uint8_t  tcp_off;    /* data offset */
   uint8_t  tcp_flags;  /* flags       */
   uint16_t tcp_win;    /* window      */
   uint16_t tcp_sum;    /* checksum    */

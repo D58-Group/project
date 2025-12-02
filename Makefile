@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-Wall -g
-LIBS=-lpcap -lncurses -lpthread
+LIBS=-lpcap -lncurses -lpthread -lm
 
 TARGET=packet_sniffer
 SRCS=packet_sniffer.c sr_utils.c sorting.c
