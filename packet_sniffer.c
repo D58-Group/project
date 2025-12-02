@@ -32,7 +32,6 @@ typedef struct ts_bin {
     uint64_t tcp_count;
     uint64_t udp_count;
     uint64_t icmp_count;
-    uint64_t other_l4_count;
 
     uint64_t http_count;
 
@@ -46,7 +45,6 @@ static uint64_t total_arp_count    = 0;
 static uint64_t total_tcp_count    = 0;
 static uint64_t total_udp_count    = 0;
 static uint64_t total_icmp_count   = 0;
-static uint64_t total_other_l4     = 0;
 static uint64_t total_http_count   = 0;
 
 static ts_bin_t *ts_head = NULL;
@@ -680,10 +678,6 @@ static void ts_update(double t_rel,
         } else if (p == 1) {
             bin->icmp_count++;
             total_icmp_count++;
-        } else {
-            bin->other_l4_count++;
-            total_other_l4++;
-        }
     }
 
     /* HTTP */
