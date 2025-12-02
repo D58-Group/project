@@ -683,6 +683,7 @@ static void ts_update(double t_rel,
         } else if (p == 1) {
             bin->icmp_count++;
             total_icmp_count++;
+        }
     }
 
     /* HTTP */
@@ -711,18 +712,16 @@ void refresh_stats_window() {
   mvwprintw(stats, 0, 32, "TCP");
   mvwprintw(stats, 0, 42, "UDP");
   mvwprintw(stats, 0, 52, "ICMP");
-  mvwprintw(stats, 0, 62, "OTHER L4");
-  mvwprintw(stats, 0, 72, "HTTP");
-  mvwprintw(stats, 0, 82, "Bytes");
+  mvwprintw(stats, 0, 62, "HTTP");
+  mvwprintw(stats, 0, 72, "Bytes");
   mvwprintw(stats, 1, 0, "%d", total_pkts);
   mvwprintw(stats, 1, 12, "%d", total_ipv4_count);
   mvwprintw(stats, 1, 22, "%d", total_arp_count);
   mvwprintw(stats, 1, 32, "%d", total_tcp_count);
   mvwprintw(stats, 1, 42, "%d", total_udp_count);
   mvwprintw(stats, 1, 52, "%d", total_icmp_count);
-  mvwprintw(stats, 1, 62, "%d", total_other_l4);
-  mvwprintw(stats, 1, 72, "%d", total_http_count);
-  mvwprintw(stats, 1, 82, "%d", total_bytes);
+  mvwprintw(stats, 1, 62, "%d", total_http_count);
+  mvwprintw(stats, 1, 72, "%d", total_bytes);
   wmove(stats, 3, 0);
   whline(stats, '-', MAX_COLS);
   wrefresh(stats);
