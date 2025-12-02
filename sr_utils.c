@@ -266,22 +266,21 @@ void print_hdrs(uint8_t *buf, uint32_t length) {
           fprintf(stderr, "Failed to print TCP header, insufficient length\n");
         else {
           print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-          sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-          int tcp_data_offset = tcp_hdr->tcp_off >> 4;  /* get data offset (last 4 bytes are reserved) */
-          int tcp_header_length = tcp_data_offset * 4;
-          if (length > sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length) {
-            fprintf(stderr, "\nTCP payload\n");
-            size_t payload_len =
-              length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
+          // sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+          // int tcp_data_offset = tcp_hdr->tcp_off >> 4;  /* get data offset (last 4 bytes are reserved) */
+          // int tcp_header_length = tcp_data_offset * 4;
+          // if (length > sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length) {
+            // fprintf(stderr, "\tTCP payload\n");
+            // size_t payload_len =
+            //   length - tcp_header_length - sizeof(sr_ethernet_hdr_t) - sizeof(sr_ip_hdr_t);
 
-            fprintf(stderr, "Header length: %d\n", tcp_header_length);
-            fprintf(stderr, "Payload length: %zu\n", payload_len);
+            // fprintf(stderr, "\tHeader length: %d\n", tcp_header_length);
+            // fprintf(stderr, "\tPayload length: %zu\n", payload_len);
 
-            fwrite(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length,
-              1, payload_len, stderr);
-
-            fwrite("\n", 1, 1, stderr);
-          }
+            // fwrite(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) + tcp_header_length,
+            //   1, payload_len, stderr);
+            // fwrite("\n", 1, 1, stderr);
+          // }
         }
     }
   }
@@ -393,4 +392,27 @@ char *format_hdrs_to_string(uint8_t *buf, uint32_t length) {
     return output; 
 }
 
+void print_http_hdr(uint8_t *buf, uint32_t length) {
+  fwrite(buf, 1, length, stderr);
+}
 
+char *http_hdr_to_str(uint8_t *buf, uint32_t length) {
+    char *output = NULL;
+    size_t out_size = 0;
+
+    FILE *mem = open_memstream(&output, &out_size);
+    if (!mem) return NULL;
+
+    //redirects prints 
+    FILE *saved = stderr;
+    stderr = mem;
+
+    print_http_hdr(buf, length);   
+
+    //put it back 
+    fflush(mem);
+    stderr = saved;
+    fclose(mem); 
+
+    return output; 
+}

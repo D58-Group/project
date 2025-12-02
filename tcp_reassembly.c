@@ -19,7 +19,7 @@ tcp_stream_t* streams_list = NULL;
 // HELPER FUNCTIONS
 ///////////////////////////////////////////////////////////////////////////////
 
-int find_substring(uint8_t* data, uint32_t len, const char* substr) {
+int find_substr(uint8_t* data, uint32_t len, const char* substr) {
   uint32_t substr_len = strlen(substr);
   for (uint32_t i = 0; i <= len - substr_len; i++) {
     if (memcmp(data + i, substr, substr_len) == 0) {
@@ -53,18 +53,6 @@ int is_http_response(uint8_t* data, uint32_t len) {
   return 0;
 }
 
-int is_http_stream(tcp_stream_t* stream) {
-  tcp_segment_t* segment = stream->segments;
-  if (segment == NULL) {
-    return 0;
-  }
-  if (is_http_request(segment->data, segment->len) ||
-      is_http_response(segment->data, segment->len)) {
-    return 1;
-  }
-  return 0;
-}
-
 void print_tcp_stream(tcp_stream_t* stream) {
   fprintf(stderr, "-------------\n");
   fprintf(stderr, "TCP Stream:\n");
@@ -84,17 +72,17 @@ void print_tcp_stream(tcp_stream_t* stream) {
     fprintf(stderr, "\tLen: %u\n", segment->len);
     fprintf(stderr, "-------------\n");
 
-    // if (segment->len > 0 && segment->data != NULL) {
-    //   for (uint32_t i = 0; i < segment->len; i++) {
-    //     char c = segment->data[i];
-    //     if (c >= 32 && c <= 126) {  // printable characters
-    //        fprintf(stderr, "%c", c);
-    //     } else {
-    //        fprintf(stderr, ".");
-    //     }
-    //   }
-    //    fprintf(stderr, "\n");
-    // }
+    if (segment->len > 0 && segment->data != NULL) {
+      for (uint32_t i = 0; i < segment->len; i++) {
+        char c = segment->data[i];
+        if (c >= 32 && c <= 126) {  // printable characters
+          fprintf(stderr, "%c", c);
+        } else {
+          fprintf(stderr, ".");
+        }
+      }
+      fprintf(stderr, "\n");
+    }
     segment = segment->next;
   }
 }
@@ -118,6 +106,31 @@ char* tcp_stream_to_str(tcp_stream_t* stream) {
   fclose(mem);
 
   return output;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// CLEANUP
+////////////////////////////////////////////////////////////////////////////////
+
+void free_tcp_stream(tcp_stream_t* stream) {
+  tcp_segment_t* segment = stream->segments;
+  while (segment != NULL) {
+    tcp_segment_t* next = segment->next;
+    free(segment->data);
+    free(segment);
+    segment = next;
+  }
+  free(stream);
+}
+
+void free_all_tcp_streams() {
+  tcp_stream_t* stream = streams_list;
+  while (stream != NULL) {
+    tcp_stream_t* next = stream->next;
+    free_tcp_stream(stream);
+    stream = next;
+  }
+  streams_list = NULL;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -200,14 +213,167 @@ void insert_tcp_segment(tcp_stream_t* stream, tcp_segment_t* new_segment) {
   }
 }
 
+void remove_tcp_stream(tcp_stream_t* stream) {
+  if (streams_list == NULL || stream == NULL) {
+    return;
+  }
+  if (streams_list == stream) {
+    streams_list = streams_list->next;
+    free_tcp_stream(stream);
+    return;
+  }
+  tcp_stream_t* current = streams_list;
+  while (current->next != NULL) {
+    if (current->next == stream) {
+      current->next = stream->next;
+      free_tcp_stream(stream);
+      return;
+    }
+    current = current->next;
+  }
+}
+
+void remove_first_n_tcp_segments(tcp_stream_t* stream, int n) {
+  tcp_segment_t* curr = stream->segments;
+  tcp_segment_t* prev = NULL;
+  int count = 0;
+
+  while (curr != NULL && count < n) {
+    prev = curr;
+    curr = curr->next;
+    free(prev->data);
+    free(prev);
+    count++;
+  }
+  stream->segments = curr;
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // REASSEMBLY
 ///////////////////////////////////////////////////////////////////////////////
-void try_reassemble_http(tcp_stream_t* stream) {
-  printf("trying to reassemble\n");
 
-  if (!is_http_stream(stream) || stream->segments == NULL) {
-    fprintf(stderr, "Not an HTTP stream or no segments\n");
+http_message_t* try_reassembling_http(tcp_stream_t* stream) {
+  if (stream->segments == NULL) {
+    return NULL;
+  }
+
+  int http_verified = 0;
+  int http_buf_len = 0;
+  uint8_t* http_buf = NULL;
+
+  int segment_count = 0;
+  tcp_segment_t* prev = NULL;
+  tcp_segment_t* curr = stream->segments;
+
+  while (curr != NULL) {
+    // check if we have the next segment in sequence
+    if (prev != NULL && curr->seq != prev->seq + prev->len) {
+      // missing segment
+      free(http_buf);
+      return NULL;
+    }
+
+    segment_count++;
+
+    // increase buffer size
+    http_buf = realloc(http_buf, http_buf_len + curr->len);
+    if (!http_buf) {
+      return NULL;
+    }
+
+    // append segment data to buffer
+    memcpy(http_buf + http_buf_len, curr->data, curr->len);
+    http_buf_len += curr->len;
+
+    // check that this is an http stream
+    if (!http_verified && http_buf_len >= 10) {
+      if (is_http_request(http_buf, http_buf_len) ||
+          is_http_response(http_buf, http_buf_len)) {
+        http_verified = 1;
+      } else {
+        // not an http stream
+        free(http_buf);
+        return NULL;
+      }
+    }
+
+    // check if we have a complete http message
+    if (http_buf_len >= 4) {
+      // check if we have the end of http header
+      int hdr_end = find_substr(http_buf, http_buf_len, "\r\n\r\n");
+      if (hdr_end != -1) {
+        hdr_end += 4;
+
+        // check for content-length header
+        int conlen_start = find_substr(http_buf, hdr_end, "Content-Length: ");
+        if (conlen_start != -1) {
+          // content-length found
+          conlen_start += strlen("Content-Length: ");
+
+          // find end of content-length line
+          int conlen_end = find_substr(http_buf + conlen_start,
+                                       hdr_end - conlen_start, "\r\n");
+
+          if (conlen_end != -1) {
+            // extract content length
+            conlen_end += conlen_start;
+
+            // allocate string for content length
+            char conlen_str[conlen_end - conlen_start + 1];
+            memcpy(conlen_str, http_buf + conlen_start,
+                   conlen_end - conlen_start);
+            conlen_str[conlen_end - conlen_start] = '\0';
+
+            // convert to integer
+            int conlen = atoi(conlen_str);
+
+            // total http message length
+            int http_msg_len = hdr_end + conlen;
+
+            // should be equal but just in case
+            if (http_buf_len >= http_msg_len) {
+              http_message_t* reassembled = malloc(sizeof(http_message_t));
+              if (!reassembled) {
+                free(http_buf);
+                return NULL;
+              }
+
+              reassembled->header = malloc(hdr_end);
+              memcpy(reassembled->header, http_buf, hdr_end);
+              reassembled->header_len = hdr_end;
+
+              reassembled->data = malloc(conlen);
+              memcpy(reassembled->data, http_buf + hdr_end, conlen);
+              reassembled->data_len = conlen;
+
+              remove_first_n_tcp_segments(stream, segment_count);
+              free(http_buf);
+              return reassembled;
+            }
+          }
+        }
+      }
+    }
+
+    prev = curr;
+    curr = curr->next;
+  }
+
+  free(http_buf);
+  return NULL;
+}
+/*
+
+
+void try_reassemble_http(tcp_stream_t* stream) {
+  if (!is_http_stream(stream)) {
+    // not an http stream, remove it
+    // no point in processing since we're only reassembling http
+    remove_tcp_stream(stream);
+    return;
+  }
+
+  if (stream->segments == NULL) {
     return;
   }
 
@@ -215,13 +381,11 @@ void try_reassemble_http(tcp_stream_t* stream) {
   uint8_t* http_buf = NULL;
 
   int segment_count = 0;
-  tcp_segment_t* prev_segment = NULL;
-  tcp_segment_t* curr_segment = stream->segments;
-  while (curr_segment != NULL) {
-    // check for missing segment
-    if (prev_segment != NULL &&
-        curr_segment->seq != prev_segment->seq + prev_segment->len) {
-      fprintf(stderr, "missing segment detected>>>>>>>>>>>>>>>>>>>\n");
+  tcp_segment_t* prev = NULL;
+  tcp_segment_t* curr = stream->segments;
+  while (curr != NULL) {
+    // check if we have the next segment in sequence
+    if (prev != NULL && curr->seq != prev->seq + prev->len) {
       // missing segment detected
       free(http_buf);
       return;
@@ -230,70 +394,66 @@ void try_reassemble_http(tcp_stream_t* stream) {
     segment_count++;
 
     // increase buffer size
-    http_buf = realloc(http_buf, http_buf_len + curr_segment->len);
+    http_buf = realloc(http_buf, http_buf_len + curr->len);
     if (!http_buf) {
       return;
     }
 
     // append segment data to buffer
-    memcpy(http_buf + http_buf_len, curr_segment->data, curr_segment->len);
-    http_buf_len += curr_segment->len;
+    memcpy(http_buf + http_buf_len, curr->data, curr->len);
+    http_buf_len += curr->len;
 
-    // find the end of the http header
+    // check if we have a complete http message
     if (http_buf_len >= 4) {
-      int hdr_end_idx = find_substring(http_buf, http_buf_len, "\r\n\r\n");
+      // find end of http header
+      int hdr_end = find_substr(http_buf, http_buf_len, "\r\n\r\n");
+      if (hdr_end != -1) {
+        hdr_end += 4;
 
-      if (hdr_end_idx != -1) {
-        // found end of http header
-        hdr_end_idx += 4;  // include the \r\n\r\n
-
-        // check if content-length is specified
-        // this gives us the length of the payload
-        int con_len_start_idx =
-            find_substring(http_buf, hdr_end_idx, "Content-Length: ");
-        if (con_len_start_idx != -1) {
+        // check for content-length header
+        int conlen_start = find_substr(http_buf, hdr_end, "Content-Length: ");
+        if (conlen_start != -1) {
           // content-length found
-          con_len_start_idx += strlen("Content-Length: ");
+          conlen_start += strlen("Content-Length: ");
 
           // find end of content-length line
-          int con_len_end_idx =
-              find_substring(http_buf + con_len_start_idx,
-                             hdr_end_idx - con_len_start_idx, "\r\n");
+          int conlen_end = find_substr(http_buf + conlen_start,
+                                       hdr_end - conlen_start, "\r\n");
 
-          if (con_len_end_idx != -1) {
+          if (conlen_end != -1) {
             // extract content length
-            con_len_end_idx += con_len_start_idx;
+            conlen_end += conlen_start;
 
             // allocate string for content length
-            char con_len_str[con_len_end_idx - con_len_start_idx + 1];
-            memcpy(con_len_str, http_buf + con_len_start_idx,
-                   con_len_end_idx - con_len_start_idx);
-            con_len_str[con_len_end_idx - con_len_start_idx] = '\0';
+            char conlen_str[conlen_end - conlen_start + 1];
+            memcpy(conlen_str, http_buf + conlen_start,
+                   conlen_end - conlen_start);
+            conlen_str[conlen_end - conlen_start] = '\0';
 
             // convert to integer
-            int con_len = atoi(con_len_str);
+            int conlen = atoi(conlen_str);
 
             // total http message length
-            int http_msg_len = hdr_end_idx + con_len;
+            int http_msg_len = hdr_end + conlen;
 
             // should be equal but just in case
             if (http_buf_len >= http_msg_len) {
               // complete http message reassembled
-              printf(
-                  "------------------------------------------------------------"
-                  "--\n");
-              printf("HTTP MESSAGE FULLY REASSEMBLED\n");
-              printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
-              printf("Number of segments: %d\n", segment_count);
+              // printf(
+              // "------------------------------------------------------------"
+              //     "--\n");
+              // printf("HTTP MESSAGE FULLY REASSEMBLED\n");
+              // printf("Reassembled HTTP Data (length %d):\n", http_buf_len);
+              // printf("Number of segments: %d\n", segment_count);
 
-              // fwrite(http_buf, 1, hdr_end_idx, stdout); // print header only
-              fwrite(http_buf, 1, http_buf_len, stdout);  // print full message
-              printf("\n");
+              // // fwrite(http_buf, 1, hdr_end, stdout); // print header only
+              // fwrite(http_buf, 1, http_buf_len, stdout);  // print full
+              // message printf("\n");
 
-              printf(
-                  "------------------------------------------------------------"
-                  "--\n");
-              free(http_buf);
+              // printf(
+              // "------------------------------------------------------------"
+              //     "--\n");
+              // free(http_buf);
               return;
             }
           }
@@ -301,8 +461,8 @@ void try_reassemble_http(tcp_stream_t* stream) {
       }
     }
 
-    prev_segment = curr_segment;
-    curr_segment = curr_segment->next;
+    prev = curr;
+    curr = curr->next;
   }
 
   // print the http buffer
@@ -314,6 +474,9 @@ void try_reassemble_http(tcp_stream_t* stream) {
   printf("--------------------------------------------------------------\n");
   free(http_buf);
 }
+
+
+*/
 
 void process_tcp_packet(packet_node_t* packet_node) {
   uint8_t* packet = packet_node->packet;
@@ -356,6 +519,13 @@ void process_tcp_packet(packet_node_t* packet_node) {
     stream->next = streams_list;
     streams_list = stream;
   }
+  if (len <= data_offset) {
+    // no payload, dont bother
+    return;
+  }
+
+  // debugging
+  // packet_node->info = tcp_stream_to_str(stream);
 
   // create and save the tcp segment
   tcp_segment_t* segment = create_tcp_segment(id, seq, len - data_offset, data);
@@ -364,33 +534,9 @@ void process_tcp_packet(packet_node_t* packet_node) {
   }
   insert_tcp_segment(stream, segment);
 
-  // todo: append after reassembly (last tcp packet only)
-  packet_node->info = tcp_stream_to_str(stream); // temp
-
-  // try_reassemble_http(stream);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// CLEANUP
-////////////////////////////////////////////////////////////////////////////////
-
-void free_tcp_stream(tcp_stream_t* stream) {
-  tcp_segment_t* segment = stream->segments;
-  while (segment != NULL) {
-    tcp_segment_t* next = segment->next;
-    free(segment->data);
-    free(segment);
-    segment = next;
+  // try reassembling http message
+  packet_node->http_msg = try_reassembling_http(stream);
+  if (packet_node->http_msg != NULL) {
+    packet_node->proto = HTTP;
   }
-  free(stream);
-}
-
-void free_all_tcp_streams() {
-  tcp_stream_t* stream = streams_list;
-  while (stream != NULL) {
-    tcp_stream_t* next = stream->next;
-    free_tcp_stream(stream);
-    stream = next;
-  }
-  streams_list = NULL;
 }

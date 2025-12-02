@@ -346,9 +346,11 @@ packet_node_t* create_packet_node(const uint8_t* packet,
 
   node->proto = get_protocol(node->packet);
   node->info = format_hdrs_to_string(node->packet, node->length);
+  node->http_msg = NULL;
 
   node->next = NULL;
   node->prev = NULL;
+  
   return node;
 }
 
@@ -412,8 +414,12 @@ void delete_packet_nodes(packet_node_t* node) {
   while (node) {
     packet_node_t* next = node->next;
     free(node->packet);
-    if (node->info)
+    if (node->info) {
       free(node->info);
+    }
+    if (node->http_msg) {
+      free(node->http_msg);
+    }
     free(node);
     node = next;
   }
@@ -497,7 +503,7 @@ void print_pad_row(packet_node_t *node){
   if (proto == ARP) {
     convert_addr_eth_to_str(node->ar_sha, src);
     convert_addr_eth_to_str(node->ar_tha, dst);
-  } else if (proto == ICMP || proto == TCP || proto == UDP || proto == IPV4) {
+  } else if (proto == ICMP || proto == TCP || proto == UDP || proto == IPV4 || proto == HTTP  ) {
     convert_addr_ip_int_to_str(node->src_ip, src);
     convert_addr_ip_int_to_str(node->dst_ip, dst);
   } else {
@@ -518,6 +524,8 @@ void print_pad_row(packet_node_t *node){
     sprintf(buf, "%s", "UDP");
   } else if (proto == IPV4) {
     sprintf(buf, "%s", "IPv4");
+  } else if (proto == HTTP) {
+    sprintf(buf, "%s", "HTTP");
   } else {
     sprintf(buf, "%s", "OTHER");
   }
@@ -807,7 +815,7 @@ void display_header_info() {
   current_info_line = 0;
   werase(info_pad);
   wrefresh(info_pad);
-  mvwprintw(info_pad, 0, 0, "%s", node->info);
+  // mvwprintw(info_pad, 0, 0, "%s", node->info);
   char *info = node->info;
   int info_length = strlen(info);
   char buf[info_length + 1];
@@ -831,6 +839,33 @@ void display_header_info() {
       strcat(line, buf);
     }
   }
+
+  if (node->proto == HTTP && node->http_msg != NULL) {
+    mvwprintw(info_pad, line_count, 0, "%s", "HTTP header:");
+    line_count += 1;
+    max_info_lines += 1;
+
+    char *http_info = http_hdr_to_str(node->http_msg->header, node->http_msg->header_len);
+    if (http_info != NULL) {
+      int http_info_len = strlen(http_info);
+      sprintf(buf, "\t%s", "");
+      sprintf(line, "%s", "");
+      for (int i = 0; i < http_info_len; i++) {
+        if (http_info[i] == '\n') {
+          mvwprintw(info_pad, line_count, 0, "\t%s", line);
+          line_count += 1;
+          sprintf(buf, "%s", "");
+          sprintf(line, "%s", "");
+          max_info_lines += 1;
+        } else {
+          buf[0] = http_info[i];
+          buf[1] = '\0';
+          strcat(line, buf);
+        }
+      }
+      free(http_info);
+    }
+  } 
 
   refresh_info_pad();
 }
