@@ -30,14 +30,14 @@ int find_substr(uint8_t* data, uint32_t len, const char* substr) {
 }
 
 int is_http_request(uint8_t* data, uint32_t len) {
-  if (len < 4) {
-    return 0;
-  }
-  // Simple check for HTTP methods
-  if (memcmp(data, "GET ", 4) == 0 || memcmp(data, "POST", 4) == 0 ||
-      memcmp(data, "HEAD", 4) == 0 || memcmp(data, "PUT ", 4) == 0 ||
-      memcmp(data, "DELE", 4) == 0 || memcmp(data, "OPTI", 4) == 0) {
-    return 1;
+  const char* methods[] = {"GET ",   "POST ",   "HEAD ",   "PUT ",
+                           "PATCH ", "DELETE ", "OPTIONS "};
+  for (int i = 0; i < 7; i++) {
+    if (len >= strlen(methods[i])) {
+      if (memcmp(data, (uint8_t*)methods[i], strlen(methods[i])) == 0) {
+        return 1;
+      }
+    }
   }
   return 0;
 }
@@ -286,7 +286,7 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
     http_buf_len += curr->len;
 
     // check that this is an http stream
-    if (!http_verified && http_buf_len >= 10) {
+    if (!http_verified && http_buf_len >= 4) {
       if (is_http_request(http_buf, http_buf_len) ||
           is_http_response(http_buf, http_buf_len)) {
         http_verified = 1;
@@ -351,6 +351,24 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
               return reassembled;
             }
           }
+        } else {
+          // no content-length, assume header only
+          http_message_t* reassembled = malloc(sizeof(http_message_t));
+          if (!reassembled) {
+            free(http_buf);
+            return NULL;
+          }
+
+          reassembled->header = malloc(hdr_end);
+          memcpy(reassembled->header, http_buf, hdr_end);
+          reassembled->header_len = hdr_end;
+
+          reassembled->data = NULL;
+          reassembled->data_len = 0;
+
+          remove_first_n_tcp_segments(stream, segment_count);
+          free(http_buf);
+          return reassembled;
         }
       }
     }
@@ -533,6 +551,9 @@ void process_tcp_packet(packet_node_t* packet_node) {
     return;
   }
   insert_tcp_segment(stream, segment);
+
+  // debugging
+  // packet_node->info = tcp_stream_to_str(stream);
 
   // try reassembling http message
   packet_node->http_msg = try_reassembling_http(stream);
