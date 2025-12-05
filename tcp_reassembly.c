@@ -407,12 +407,17 @@ void process_tcp_packet(packet_node_t* packet_node) {
     data = (uint8_t*)(packet + data_offset);
   }
 
+  // extract tcp flags
+  uint8_t tcp_flags = tcp_hdr->tcp_flags;
+  int syn_flag = tcp_flags & TH_SYN;
+  int fin_flag = tcp_flags & TH_FIN;
+  int rst_flag = tcp_flags & TH_RST;
+
   // find or create tcp stream
   tcp_stream_t* stream = find_tcp_stream(src_ip, dest_ip, src_port, dest_port);
   if (!stream) {
-    // open new stream only if SYN flag is set
-    uint8_t tcp_flags = tcp_hdr->tcp_flags;
-    if ((tcp_flags & TH_SYN) == 0) {
+    // open a new stream only if SYN flag is set
+    if (!syn_flag) {
       return;
     }
     stream = init_tcp_stream(src_ip, dest_ip, src_port, dest_port, seq);
@@ -422,8 +427,13 @@ void process_tcp_packet(packet_node_t* packet_node) {
     stream->next = streams_list;
     streams_list = stream;
   }
+
+  // no payload, don't bother storing
   if (len <= data_offset) {
-    // no payload, dont bother
+    // if connection closing, just free the stream
+    if (fin_flag || rst_flag) {
+      remove_tcp_stream(stream);
+    }
     return;
   }
 
@@ -444,5 +454,10 @@ void process_tcp_packet(packet_node_t* packet_node) {
   packet_node->http_msg = try_reassembling_http(stream);
   if (packet_node->http_msg != NULL) {
     packet_node->proto = HTTP;
+  }
+
+  // payload has been processed, safe to free the stream
+  if (fin_flag || rst_flag) {
+    free_tcp_stream(stream);
   }
 }

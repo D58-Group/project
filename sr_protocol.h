@@ -198,6 +198,15 @@ struct sr_tcp_hdr {
 #ifndef TH_SYN
 #define TH_SYN 0x02
 #endif
+#ifndef TH_ACK
+#define TH_ACK 0x10
+#endif
+#ifndef TH_FIN
+#define TH_FIN 0x01
+#endif
+#ifndef TH_RST
+#define TH_RST 0x04
+#endif
   uint16_t tcp_src;    /* source port */
   uint16_t tcp_dst;    /* dest port   */
   uint32_t tcp_seq;    /* sequence    */
