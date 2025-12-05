@@ -5,30 +5,6 @@
 #include <stdint.h>
 
 #include "protocol.h"
-#include "utils.h"
-
-struct tcp_segment {
-  uint32_t id;               // frame number
-  uint32_t seq;              // tcp sequence number
-  uint32_t len;              // data length
-  uint8_t* data;             // data
-  struct tcp_segment* next;  // next segment
-} typedef tcp_segment_t;
-
-struct tcp_stream {
-  // used to identify the stream
-  uint32_t src_ip;     // source IP address
-  uint32_t dest_ip;    // destination IP address
-  uint16_t src_port;   // source port
-  uint16_t dest_port;  // destination port
-
-  // reassembly info
-  tcp_segment_t* segments;  // linked list of segments
-  uint32_t init_seq;        // initial sequence number
-  uint8_t* http_buf;        // reassembled HTTP data
-  uint32_t http_buf_len;    // length of reassembled HTTP data
-  struct tcp_stream* next;
-} typedef tcp_stream_t;
 
 struct http_message {
   uint8_t* header;
@@ -57,15 +33,27 @@ struct packet_node {
 
   char* info;
 
-  // optional
-  http_message_t* http_msg;
+  http_message_t* http_msg;  // only if proto=HTTP
 } typedef packet_node_t;
 
-struct options {
-  char* interface;
-  char* filename;
-  char* protocol;
-  int duration;
-} typedef options_t;
+struct tcp_segment {
+  uint32_t id;               // frame number
+  uint32_t seq;              // tcp sequence number
+  uint32_t len;              // data length
+  uint8_t* data;             // data
+  struct tcp_segment* next;  // next segment
+} typedef tcp_segment_t;
+
+struct tcp_stream {
+  uint32_t src_ip;          // source IP address
+  uint32_t dest_ip;         // destination IP address
+  uint16_t src_port;        // source port
+  uint16_t dest_port;       // destination port
+  uint32_t init_seq;        // initial sequence number
+  uint8_t* http_buf;        // reassembled HTTP data
+  uint32_t http_buf_len;    // length of reassembled HTTP data
+  tcp_segment_t* segments;  // linked list of segments
+  struct tcp_stream* next;
+} typedef tcp_stream_t;
 
 #endif

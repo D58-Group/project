@@ -68,7 +68,8 @@
 #endif
 #define ICMP_DATA_SIZE 28
 
-/* Structure of a ICMP header
+/*
+ * Structure of a ICMP header
  */
 struct icmp_hdr {
   uint8_t icmp_type;
@@ -78,7 +79,8 @@ struct icmp_hdr {
 } __attribute__((packed));
 typedef struct icmp_hdr icmp_hdr_t;
 
-/* Structure of a type3 ICMP header
+/*
+ * Structure of a type3 ICMP header
  */
 struct icmp_t3_hdr {
   uint8_t icmp_type;
@@ -90,14 +92,6 @@ struct icmp_t3_hdr {
 
 } __attribute__((packed));
 typedef struct icmp_t3_hdr icmp_t3_hdr_t;
-
-struct udp_hdr {
-  uint16_t udp_src;
-  uint16_t udp_dst;
-  uint16_t udp_len;
-  uint16_t udp_sum;
-} __attribute__((packed));
-typedef struct udp_hdr udp_hdr_t;
 
 /*
  * Structure of an internet header, naked of options.
@@ -128,8 +122,8 @@ struct ip_hdr {
 typedef struct ip_hdr ip_hdr_t;
 
 /*
- *  Ethernet packet header prototype.  Too many O/S's define this differently.
- *  Easy enough to solve that and define it here.
+ * Ethernet packet header prototype.  Too many O/S's define this differently.
+ * Easy enough to solve that and define it here.
  */
 struct ethernet_hdr {
 #ifndef ETHER_ADDR_LEN
@@ -140,6 +134,53 @@ struct ethernet_hdr {
   uint16_t ether_type;                 /* packet type ID */
 } __attribute__((packed));
 typedef struct ethernet_hdr ethernet_hdr_t;
+
+/*
+ * Structure of an ARP header
+ */
+struct arp_hdr {
+  unsigned short ar_hrd;                /* format of hardware address   */
+  unsigned short ar_pro;                /* format of protocol address   */
+  unsigned char ar_hln;                 /* length of hardware address   */
+  unsigned char ar_pln;                 /* length of protocol address   */
+  unsigned short ar_op;                 /* ARP opcode (command)         */
+  unsigned char ar_sha[ETHER_ADDR_LEN]; /* sender hardware address      */
+  uint32_t ar_sip;                      /* sender IP address            */
+  unsigned char ar_tha[ETHER_ADDR_LEN]; /* target hardware address      */
+  uint32_t ar_tip;                      /* target IP address            */
+} __attribute__((packed));
+typedef struct arp_hdr arp_hdr_t;
+
+/*
+ *Structure of a UDP header
+ */
+struct udp_hdr {
+  uint16_t udp_src;
+  uint16_t udp_dst;
+  uint16_t udp_len;
+  uint16_t udp_sum;
+} __attribute__((packed));
+typedef struct udp_hdr udp_hdr_t;
+
+/*
+ * Structure of a TCP header
+ */
+struct tcp_hdr {
+#define TH_SYN 0x02
+#define TH_ACK 0x10
+#define TH_FIN 0x01
+#define TH_RST 0x04
+  uint16_t tcp_src;  /* source port */
+  uint16_t tcp_dst;  /* dest port   */
+  uint32_t tcp_seq;  /* sequence    */
+  uint32_t tcp_ack;  /* ack number  */
+  uint8_t tcp_off;   /* data offset (high 4 bits) + reserved (low 4 bits) */
+  uint8_t tcp_flags; /* flags       */
+  uint16_t tcp_win;  /* window      */
+  uint16_t tcp_sum;  /* checksum    */
+  uint16_t tcp_urp;  /* urgent ptr  */
+} __attribute__((packed));
+typedef struct tcp_hdr tcp_hdr_t;
 
 enum ip_protocol {
   ip_protocol_icmp = 0x0001,
@@ -161,41 +202,8 @@ enum arp_hrd_fmt {
   arp_hrd_ethernet = 0x0001,
 };
 
-struct arp_hdr {
-  unsigned short ar_hrd;                /* format of hardware address   */
-  unsigned short ar_pro;                /* format of protocol address   */
-  unsigned char ar_hln;                 /* length of hardware address   */
-  unsigned char ar_pln;                 /* length of protocol address   */
-  unsigned short ar_op;                 /* ARP opcode (command)         */
-  unsigned char ar_sha[ETHER_ADDR_LEN]; /* sender hardware address      */
-  uint32_t ar_sip;                      /* sender IP address            */
-  unsigned char ar_tha[ETHER_ADDR_LEN]; /* target hardware address      */
-  uint32_t ar_tip;                      /* target IP address            */
-} __attribute__((packed));
-typedef struct arp_hdr arp_hdr_t;
+enum protocol { ETHERNET, ARP, IPV4, ICMP, TCP, UDP, HTTP, OTHER };
 
 #define IFACE_NAMELEN 32
-
-struct tcp_hdr {
-#ifndef TH_FLAGS
-#define TH_FLAGS
-#define TH_SYN 0x02
-#define TH_ACK 0x10
-#define TH_FIN 0x01
-#define TH_RST 0x04
-#endif
-  uint16_t tcp_src;  /* source port */
-  uint16_t tcp_dst;  /* dest port   */
-  uint32_t tcp_seq;  /* sequence    */
-  uint32_t tcp_ack;  /* ack number  */
-  uint8_t tcp_off;   /* data offset (high 4 bits) + reserved (low 4 bits) */
-  uint8_t tcp_flags; /* flags       */
-  uint16_t tcp_win;  /* window      */
-  uint16_t tcp_sum;  /* checksum    */
-  uint16_t tcp_urp;  /* urgent ptr  */
-} __attribute__((packed));
-typedef struct tcp_hdr tcp_hdr_t;
-
-enum protocol { ETHERNET, ARP, IPV4, ICMP, TCP, UDP, HTTP, OTHER };
 
 #endif /* -- PROTOCOL_H -- */

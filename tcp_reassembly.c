@@ -9,15 +9,7 @@
 
 tcp_stream_t* streams_list = NULL;
 
-// TODO CHECK SYN AND FIN FLAGS
-// TODO ONLY INIT IF SYN FLAG IS SET
-// TODO ONLY REASSEMBLE HTTP STREAMS
-// TODO HANDLE TIMEOUTS
-// TODO HANDLE SEQ NUMBER WRAPAROUND
-
-///////////////////////////////////////////////////////////////////////////////
-// HELPER FUNCTIONS
-///////////////////////////////////////////////////////////////////////////////
+/* HELPER FUNCTIONS */
 
 int find_substr(uint8_t* data, uint32_t len, const char* substr) {
   uint32_t substr_len = strlen(substr);
@@ -43,14 +35,7 @@ int is_http_request(uint8_t* data, uint32_t len) {
 }
 
 int is_http_response(uint8_t* data, uint32_t len) {
-  if (len < 5) {
-    return 0;
-  }
-  // Simple check for HTTP response status line
-  if (memcmp(data, "HTTP/1.", 5) == 0) {
-    return 1;
-  }
-  return 0;
+  return len >= 5 && memcmp(data, "HTTP/", 5) == 0;
 }
 
 void print_tcp_stream(tcp_stream_t* stream) {
@@ -108,9 +93,7 @@ char* tcp_stream_to_str(tcp_stream_t* stream) {
   return output;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// CLEANUP
-////////////////////////////////////////////////////////////////////////////////
+/* DATA CLEAN UP */
 
 void free_tcp_stream(tcp_stream_t* stream) {
   tcp_segment_t* segment = stream->segments;
@@ -133,9 +116,7 @@ void free_all_tcp_streams() {
   streams_list = NULL;
 }
 
-////////////////////////////////////////////////////////////////////////////////
-// HANDLING TCP STREAMS AND SEGMENTS
-////////////////////////////////////////////////////////////////////////////////
+/* TCP STREAM MANAGEMENT */
 
 tcp_stream_t* init_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
                               uint16_t src_port, uint16_t dest_port,
@@ -247,9 +228,7 @@ void remove_first_n_tcp_segments(tcp_stream_t* stream, int n) {
   stream->segments = curr;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-// REASSEMBLY
-///////////////////////////////////////////////////////////////////////////////
+/* HTTP REASSEMBLY */
 
 http_message_t* try_reassembling_http(tcp_stream_t* stream) {
   if (stream->segments == NULL) {
@@ -435,9 +414,6 @@ void process_tcp_packet(packet_node_t* packet_node) {
     }
     return;
   }
-
-  // debugging
-  // packet_node->info = tcp_stream_to_str(stream);
 
   // create and save the tcp segment
   tcp_segment_t* segment = create_tcp_segment(id, seq, len - data_offset, data);

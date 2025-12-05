@@ -1,6 +1,9 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <stdint.h>
+#include <arpa/inet.h>
+
 uint16_t cksum(const void* _data, int len);
 
 uint16_t ethertype(uint8_t* buf);
@@ -28,4 +31,5 @@ void get_source_dest(char* src, char* dst, const uint8_t* packet);
 // used to put the print_hdrs output in a string
 char* format_hdrs_to_string(uint8_t* buf, uint32_t length);
 char* http_hdr_to_str(uint8_t* buf, uint32_t length);
+
 #endif /* -- UTILS_H -- */

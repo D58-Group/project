@@ -11,7 +11,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "protocol.h"
 #include "sorting.h"
 #include "tcp_reassembly.h"
 #include "utils.h"
@@ -19,6 +18,23 @@
 #define MAX_ROWS 30000
 #define MAX_COLS 120
 #define TS_WINDOW_SEC 1.0
+
+struct options {
+  char* interface;
+  char* filename;
+  char* protocol;
+  int duration;
+} typedef options_t;
+
+char* usage =
+    "Usage: "
+    "%s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
+    "  -i [interface]   Interface to sniff on\n"
+    "                   If interface is omitted, lists available interfaces\n"
+    "  -o <filename>    File to save captured packets (default=stdout)\n"
+    "  -p <protocol>    Protocol to filter (default=any)\n"
+    "  -t <duration>    Duration to sniff in seconds (default=unlimited)\n"
+    "  -h               View usage information\n";
 
 typedef struct ts_bin {
   double start_time;
@@ -100,18 +116,7 @@ const int KEY_ROWS = 15;
 const int KEY_COLS = MAX_COLS - KEY_X;
 
 /* Command Line Argument Functions */
-
 pthread_mutex_t packet_list_lock = PTHREAD_MUTEX_INITIALIZER;
-
-char* usage =
-    "Usage: "
-    "%s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
-    "  -i [interface]   Interface to sniff on\n"
-    "                   If interface is omitted, lists available interfaces\n"
-    "  -o <filename>    File to save captured packets (default=stdout)\n"
-    "  -p <protocol>    Protocol to filter (default=any)\n"
-    "  -t <duration>    Duration to sniff in seconds (default=unlimited)\n"
-    "  -h               View usage information\n";
 
 typedef enum {
   SORT_BY_NUMBER,
