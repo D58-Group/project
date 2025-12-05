@@ -12,58 +12,56 @@
 #include <string.h>
 
 #include "sorting.h"
-#include "sr_utils.h"
 #include "sr_protocol.h"
+#include "sr_utils.h"
 #include "tcp_reassembly.h"
 
 #define MAX_ROWS 30000
 #define MAX_COLS 120
 #define TS_WINDOW_SEC 1.0
 
-
 typedef struct ts_bin {
-    double   start_time;
+  double start_time;
 
-    uint64_t pkt_count;
-    uint64_t byte_count;
+  uint64_t pkt_count;
+  uint64_t byte_count;
 
-    uint64_t ipv4_count;
-    uint64_t arp_count;
+  uint64_t ipv4_count;
+  uint64_t arp_count;
 
-    uint64_t tcp_count;
-    uint64_t udp_count;
-    uint64_t icmp_count;
+  uint64_t tcp_count;
+  uint64_t udp_count;
+  uint64_t icmp_count;
 
-    uint64_t http_count;
+  uint64_t http_count;
 
-    struct ts_bin *next;
+  struct ts_bin* next;
 } ts_bin_t;
 
-static uint64_t total_pkts         = 0;
-static uint64_t total_bytes        = 0;
-static uint64_t total_ipv4_count   = 0;
-static uint64_t total_arp_count    = 0;
-static uint64_t total_tcp_count    = 0;
-static uint64_t total_udp_count    = 0;
-static uint64_t total_icmp_count   = 0;
-static uint64_t total_http_count   = 0;
+static uint64_t total_pkts = 0;
+static uint64_t total_bytes = 0;
+static uint64_t total_ipv4_count = 0;
+static uint64_t total_arp_count = 0;
+static uint64_t total_tcp_count = 0;
+static uint64_t total_udp_count = 0;
+static uint64_t total_icmp_count = 0;
+static uint64_t total_http_count = 0;
 
-static ts_bin_t *ts_head = NULL;
-static ts_bin_t *ts_tail = NULL;
+static ts_bin_t* ts_head = NULL;
+static ts_bin_t* ts_tail = NULL;
 static pthread_mutex_t ts_lock = PTHREAD_MUTEX_INITIALIZER;
 
-
 /* Global Variables */
-packet_node_t *packet_list = NULL;
-packet_node_t *last_node = NULL;
+packet_node_t* packet_list = NULL;
+packet_node_t* last_node = NULL;
 int pad_length = 0;
 pcap_t* packet_capture_handle;
-WINDOW *pad = NULL;
-WINDOW *win_title = NULL;
-WINDOW *info_pad = NULL;
-WINDOW *win_key = NULL;
-WINDOW *stats = NULL;
-WINDOW *win_packet_num = NULL;
+WINDOW* pad = NULL;
+WINDOW* win_title = NULL;
+WINDOW* info_pad = NULL;
+WINDOW* win_key = NULL;
+WINDOW* stats = NULL;
+WINDOW* win_packet_num = NULL;
 int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
@@ -93,7 +91,7 @@ const int PAD_Y = TITLE_PAD_Y + 2;
 const int PACKET_NUM_ROWS = 2;
 const int PACKET_NUM_COLS = 50;
 const int PACKET_NUM_X = 0;
-const int PACKET_NUM_Y =  PAD_Y + PAD_ROWS_TO_DISPLAY + 3;
+const int PACKET_NUM_Y = PAD_Y + PAD_ROWS_TO_DISPLAY + 3;
 const int INFO_PAD_X = 0;
 const int INFO_PAD_Y = PACKET_NUM_Y + PACKET_NUM_ROWS + 1;
 const int KEY_X = 80;
@@ -116,143 +114,154 @@ char* usage =
     "  -h               View usage information\n";
 
 typedef enum {
-    SORT_BY_NUMBER,
-    SORT_BY_TIME,
-    SORT_BY_SRC,
-    SORT_BY_DST,
-    SORT_BY_PROTO,
-    SORT_BY_LENGTH,
-    SORT_BY_INFO
+  SORT_BY_NUMBER,
+  SORT_BY_TIME,
+  SORT_BY_SRC,
+  SORT_BY_DST,
+  SORT_BY_PROTO,
+  SORT_BY_LENGTH,
+  SORT_BY_INFO
 } sort_key_t;
 
 static sort_key_t current_sort_key = SORT_BY_NUMBER;
-static int current_sort_ascending  = 1;  
+static int current_sort_ascending = 1;
 
-static int packet_list_count(packet_node_t *head) {
-    int n = 0;
-    while (head) {
-        n++;
-        head = head->next;
-    }
-    return n;
+static int packet_list_count(packet_node_t* head) {
+  int n = 0;
+  while (head) {
+    n++;
+    head = head->next;
+  }
+  return n;
 }
 
-static void packet_list_to_array(packet_node_t *head,
-                                 packet_node_t **arr,
+static void packet_list_to_array(packet_node_t* head, packet_node_t** arr,
                                  int n) {
-    int i = 0;
-    while (head && i < n) {
-        arr[i++] = head;
-        head = head->next;
-    }
+  int i = 0;
+  while (head && i < n) {
+    arr[i++] = head;
+    head = head->next;
+  }
 }
 
-static packet_node_t *array_to_packet_list(packet_node_t **arr, int n) {
-    if (n == 0) return NULL;
+static packet_node_t* array_to_packet_list(packet_node_t** arr, int n) {
+  if (n == 0) return NULL;
 
-    for (int i = 0; i < n; i++) {
-        packet_node_t *prev = (i > 0)     ? arr[i-1] : NULL;
-        packet_node_t *next = (i < n - 1) ? arr[i+1] : NULL;
-        arr[i]->prev = prev;
-        arr[i]->next = next;
-    }
-    return arr[0];  
+  for (int i = 0; i < n; i++) {
+    packet_node_t* prev = (i > 0) ? arr[i - 1] : NULL;
+    packet_node_t* next = (i < n - 1) ? arr[i + 1] : NULL;
+    arr[i]->prev = prev;
+    arr[i]->next = next;
+  }
+  return arr[0];
 }
 
 static int cmp_double(double a, double b) {
-    if (a < b) return -1;
-    if (a > b) return 1;
-    return 0;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
 static int cmp_uint32(uint32_t a, uint32_t b) {
-    if (a < b) return -1;
-    if (a > b) return 1;
-    return 0;
+  if (a < b) return -1;
+  if (a > b) return 1;
+  return 0;
 }
 
-static int packet_node_cmp(packet_node_t *a, packet_node_t *b) {
- int result = 0;
+static int packet_node_cmp(packet_node_t* a, packet_node_t* b) {
+  int result = 0;
 
-    switch (current_sort_key) {
-        case SORT_BY_NUMBER:
-            if      (a->number < b->number) result = -1;
-            else if (a->number > b->number) result = 1;
-            else result = 0;
-            break;
+  switch (current_sort_key) {
+    case SORT_BY_NUMBER:
+      if (a->number < b->number)
+        result = -1;
+      else if (a->number > b->number)
+        result = 1;
+      else
+        result = 0;
+      break;
 
-        case SORT_BY_TIME:
-            result = cmp_double(a->time_rel, b->time_rel);
-            break;
+    case SORT_BY_TIME:
+      result = cmp_double(a->time_rel, b->time_rel);
+      break;
 
-        case SORT_BY_SRC:
-            result = cmp_uint32(a->src_ip, b->src_ip);
-            break;
+    case SORT_BY_SRC:
+      result = cmp_uint32(a->src_ip, b->src_ip);
+      break;
 
-        case SORT_BY_DST:
-            result = cmp_uint32(a->dst_ip, b->dst_ip);
-            break;
+    case SORT_BY_DST:
+      result = cmp_uint32(a->dst_ip, b->dst_ip);
+      break;
 
-        case SORT_BY_PROTO:
-            if      (a->proto < b->proto) result = -1;
-            else if (a->proto > b->proto) result = 1;
-            else result = 0;
-            break;
+    case SORT_BY_PROTO:
+      if (a->proto < b->proto)
+        result = -1;
+      else if (a->proto > b->proto)
+        result = 1;
+      else
+        result = 0;
+      break;
 
-        case SORT_BY_LENGTH:
-            if      (a->length < b->length) result = -1;
-            else if (a->length > b->length) result = 1;
-            else result = 0;
-            break;
+    case SORT_BY_LENGTH:
+      if (a->length < b->length)
+        result = -1;
+      else if (a->length > b->length)
+        result = 1;
+      else
+        result = 0;
+      break;
 
-        case SORT_BY_INFO:
-            if (!a->info && !b->info) result = 0;
-            else if (!a->info)        result = -1;
-            else if (!b->info)        result = 1;
-            else                      result = strcmp(a->info, b->info);
-            break;
-    }
+    case SORT_BY_INFO:
+      if (!a->info && !b->info)
+        result = 0;
+      else if (!a->info)
+        result = -1;
+      else if (!b->info)
+        result = 1;
+      else
+        result = strcmp(a->info, b->info);
+      break;
+  }
 
-    if (!current_sort_ascending)
-        result = -result;
+  if (!current_sort_ascending) result = -result;
 
-    return result;
+  return result;
 }
 
-static int packet_cmp(const void *pa, const void *pb) {
-    const packet_node_t *a = *(const packet_node_t * const *)pa;
-    const packet_node_t *b = *(const packet_node_t * const *)pb;
+static int packet_cmp(const void* pa, const void* pb) {
+  const packet_node_t* a = *(const packet_node_t* const*)pa;
+  const packet_node_t* b = *(const packet_node_t* const*)pb;
 
-    return packet_node_cmp((packet_node_t *) a, (packet_node_t *) b);
+  return packet_node_cmp((packet_node_t*)a, (packet_node_t*)b);
 }
 
 void sort_packet_list(sort_key_t key, int ascending) {
-    pthread_mutex_lock(&packet_list_lock);
+  pthread_mutex_lock(&packet_list_lock);
 
-    int n = packet_list_count(packet_list);
-    if (n <= 1) {
-        pthread_mutex_unlock(&packet_list_lock);
-        return;
-    }
-
-    packet_node_t **arr = malloc(n * sizeof(packet_node_t *));
-    if (!arr) {
-        pthread_mutex_unlock(&packet_list_lock);
-        return;
-    }
-
-    packet_list_to_array(packet_list, arr, n);
-
-    current_sort_key = key;
-    current_sort_ascending = ascending ? 1 : 0;
-
-    qsort(arr, n, sizeof(packet_node_t *), packet_cmp);
-
-    packet_list = array_to_packet_list(arr, n);
-
-    free(arr);
-
+  int n = packet_list_count(packet_list);
+  if (n <= 1) {
     pthread_mutex_unlock(&packet_list_lock);
+    return;
+  }
+
+  packet_node_t** arr = malloc(n * sizeof(packet_node_t*));
+  if (!arr) {
+    pthread_mutex_unlock(&packet_list_lock);
+    return;
+  }
+
+  packet_list_to_array(packet_list, arr, n);
+
+  current_sort_key = key;
+  current_sort_ascending = ascending ? 1 : 0;
+
+  qsort(arr, n, sizeof(packet_node_t*), packet_cmp);
+
+  packet_list = array_to_packet_list(arr, n);
+
+  free(arr);
+
+  pthread_mutex_unlock(&packet_list_lock);
 }
 
 options_t parse_options(int argc, char* argv[]) {
@@ -303,19 +312,18 @@ pcap_if_t* find_device_by_name(pcap_if_t* devices, const char* name) {
 }
 
 packet_node_t* create_packet_node(const uint8_t* packet,
-                               const struct pcap_pkthdr* packet_hdr,
-                               unsigned int number,
-                               double rel_time) {
+                                  const struct pcap_pkthdr* packet_hdr,
+                                  unsigned int number, double rel_time) {
   packet_node_t* node = malloc(sizeof(packet_node_t));
   if (!node) {
     return NULL;
   }
 
-  //copy header and length 
-  node->hdr = *packet_hdr;          
+  // copy header and length
+  node->hdr = *packet_hdr;
   node->length = packet_hdr->len;
 
-  //copy bytes from packer
+  // copy bytes from packer
   node->packet = malloc(packet_hdr->len);
   if (!node->packet) {
     free(node);
@@ -323,37 +331,37 @@ packet_node_t* create_packet_node(const uint8_t* packet,
   }
   memcpy(node->packet, packet, packet_hdr->len);
 
-  node->number   = number;
+  node->number = number;
   node->time_rel = rel_time;
 
   node->src_ip = 0;
   node->dst_ip = 0;
-  node->proto  = 0;
+  node->proto = 0;
   memset(node->ar_sha, 0, ETHER_ADDR_LEN);
   memset(node->ar_tha, 0, ETHER_ADDR_LEN);
 
-  //IP handling
+  // IP handling
   if (packet_hdr->len >= sizeof(sr_ethernet_hdr_t)) {
     uint16_t ethtype_val = ethertype(node->packet);
     if (ethtype_val == ethertype_ip &&
         packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)) {
-
-      const sr_ip_hdr_t *ip =
-        (const sr_ip_hdr_t *)(node->packet + sizeof(sr_ethernet_hdr_t));
+      const sr_ip_hdr_t* ip =
+          (const sr_ip_hdr_t*)(node->packet + sizeof(sr_ethernet_hdr_t));
 
       node->src_ip = ntohl(ip->ip_src);
       node->dst_ip = ntohl(ip->ip_dst);
-      node->proto  = ip->ip_p;
+      node->proto = ip->ip_p;
     } else if (ethtype_val == ethertype_arp &&
-      packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
-      sr_arp_hdr_t *arp_hdr = (sr_arp_hdr_t *)(node->packet + sizeof(sr_ethernet_hdr_t));
+               packet_hdr->len >=
+                   sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
+      sr_arp_hdr_t* arp_hdr =
+          (sr_arp_hdr_t*)(node->packet + sizeof(sr_ethernet_hdr_t));
       node->proto = (uint8_t)ethertype_arp;
       node->src_ip = ntohl(arp_hdr->ar_sip);
       node->dst_ip = ntohl(arp_hdr->ar_tip);
       memcpy(node->ar_sha, arp_hdr->ar_sha, ETHER_ADDR_LEN);
       memcpy(node->ar_tha, arp_hdr->ar_tha, ETHER_ADDR_LEN);
-    }
-    else {
+    } else {
       node->proto = ethtype_val;
     }
   }
@@ -364,14 +372,15 @@ packet_node_t* create_packet_node(const uint8_t* packet,
 
   node->next = NULL;
   node->prev = NULL;
-  
+
   return node;
 }
 
-void get_position_for_new_node(packet_node_t *new_node, packet_node_t **prev, packet_node_t **next) {
-  packet_node_t *a = NULL;
-  packet_node_t *b = new_node;
-  packet_node_t *c = packet_list;
+void get_position_for_new_node(packet_node_t* new_node, packet_node_t** prev,
+                               packet_node_t** next) {
+  packet_node_t* a = NULL;
+  packet_node_t* b = new_node;
+  packet_node_t* c = packet_list;
 
   if (b == NULL || c == NULL) {
     *prev = NULL;
@@ -380,7 +389,7 @@ void get_position_for_new_node(packet_node_t *new_node, packet_node_t **prev, pa
   }
 
   // Traverse through list to determine where to insert new node
-  while(c != NULL) {
+  while (c != NULL) {
     if (packet_node_cmp(b, c) != 1) {
       *prev = a;
       *next = c;
@@ -393,9 +402,9 @@ void get_position_for_new_node(packet_node_t *new_node, packet_node_t **prev, pa
   *next = c;
 }
 
-void add_to_packet_list(packet_node_t *node) {
-  packet_node_t *prev = NULL;
-  packet_node_t *next = NULL;
+void add_to_packet_list(packet_node_t* node) {
+  packet_node_t* prev = NULL;
+  packet_node_t* next = NULL;
 
   // Get prev and next values for new node
   get_position_for_new_node(node, &prev, &next);
@@ -440,7 +449,6 @@ void delete_packet_nodes(packet_node_t* node) {
   pthread_mutex_unlock(&packet_list_lock);
 }
 
-
 int get_packet_list_length(int length, packet_node_t* node) {
   if (node->next == NULL) {
     return length;
@@ -448,9 +456,9 @@ int get_packet_list_length(int length, packet_node_t* node) {
   return get_packet_list_length(length + 1, node->next);
 }
 
-packet_node_t *get_packet_by_index(int index) {
+packet_node_t* get_packet_by_index(int index) {
   int count = 0;
-  packet_node_t *node = packet_list;
+  packet_node_t* node = packet_list;
   while (node->next != NULL && count < index) {
     node = node->next;
     count += 1;
@@ -463,7 +471,6 @@ void print_packet_node(packet_node_t* node) {
   printw("timestamp: %d\n", (long)node->hdr.ts.tv_sec);
   printw("packet type: %d\n", ethertype((uint8_t*)(node->packet)));
 }
-
 
 void print_available_devices(pcap_if_t* devices) {
   pcap_if_t* device = devices;
@@ -484,7 +491,7 @@ void refresh_pad() {
 
   // Highlight the current line
   if (has_colors()) {
-     mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+    mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
   }
 
   // Move the view of the pad if the current line isn't visible
@@ -496,10 +503,11 @@ void refresh_pad() {
   }
 
   // Refresh the pad
-  prefresh(pad, top_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY - 1, MAX_COLS - 1);
+  prefresh(pad, top_line, 0, PAD_Y, PAD_X, PAD_Y + PAD_ROWS_TO_DISPLAY - 1,
+           MAX_COLS - 1);
 }
 
-void print_pad_row(packet_node_t *node){
+void print_pad_row(packet_node_t* node) {
   // Highlight current row
   if (has_colors() && pad_length == current_line) {
     attron(COLOR_PAIR(1));
@@ -517,7 +525,8 @@ void print_pad_row(packet_node_t *node){
   if (proto == ARP) {
     convert_addr_eth_to_str(node->ar_sha, src);
     convert_addr_eth_to_str(node->ar_tha, dst);
-  } else if (proto == ICMP || proto == TCP || proto == UDP || proto == IPV4 || proto == HTTP  ) {
+  } else if (proto == ICMP || proto == TCP || proto == UDP || proto == IPV4 ||
+             proto == HTTP) {
     convert_addr_ip_int_to_str(node->src_ip, src);
     convert_addr_ip_int_to_str(node->dst_ip, dst);
   } else {
@@ -570,139 +579,132 @@ void update_pad() {
   refresh_pad();
 }
 
-//check if is ip4
-static inline int is_ipv4(const uint8_t *pkt, uint32_t caplen) {
-    if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
-    return ethertype((uint8_t*)pkt) == ethertype_ip;
+// check if is ip4
+static inline int is_ipv4(const uint8_t* pkt, uint32_t caplen) {
+  if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
+  return ethertype((uint8_t*)pkt) == ethertype_ip;
 }
 
-//check if arp
-static inline int is_arp(const uint8_t *pkt, uint32_t caplen) {
-    if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
-    return ethertype((uint8_t*)pkt) == ethertype_arp;
+// check if arp
+static inline int is_arp(const uint8_t* pkt, uint32_t caplen) {
+  if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
+  return ethertype((uint8_t*)pkt) == ethertype_arp;
 }
 
-//check if http
-static int is_http(const uint8_t *pkt, uint32_t caplen) {
-    //should be ip 
-    if (!is_ipv4(pkt, caplen)) return 0;
+// check if http
+static int is_http(const uint8_t* pkt, uint32_t caplen) {
+  // should be ip
+  if (!is_ipv4(pkt, caplen)) return 0;
 
-    const sr_ip_hdr_t *ip =
-      (const sr_ip_hdr_t *)(pkt + sizeof(sr_ethernet_hdr_t));
+  const sr_ip_hdr_t* ip = (const sr_ip_hdr_t*)(pkt + sizeof(sr_ethernet_hdr_t));
 
-    //should be tcp   
-    if (ip->ip_p != 6) return 0;  
+  // should be tcp
+  if (ip->ip_p != 6) return 0;
 
-    uint32_t ip_hdr_len = ip->ip_hl * 4;
-    uint32_t offset = sizeof(sr_ethernet_hdr_t) + ip_hdr_len;
+  uint32_t ip_hdr_len = ip->ip_hl * 4;
+  uint32_t offset = sizeof(sr_ethernet_hdr_t) + ip_hdr_len;
 
-    if (caplen < offset + sizeof(sr_tcp_hdr_t))
-        return 0;
+  if (caplen < offset + sizeof(sr_tcp_hdr_t)) return 0;
 
-    const sr_tcp_hdr_t *tcp =
-      (const sr_tcp_hdr_t *)(pkt + sizeof(sr_ethernet_hdr_t) + ip_hdr_len);
+  const sr_tcp_hdr_t* tcp =
+      (const sr_tcp_hdr_t*)(pkt + sizeof(sr_ethernet_hdr_t) + ip_hdr_len);
 
-    uint16_t sport = ntohs(tcp->tcp_src);
-    uint16_t dport = ntohs(tcp->tcp_dst);
+  uint16_t sport = ntohs(tcp->tcp_src);
+  uint16_t dport = ntohs(tcp->tcp_dst);
 
-    //check the ports
-    if (sport == 80 || dport == 80 ||
-        sport == 8080 || dport == 8080 ||
-        sport == 8000 || dport == 8000)
-        return 1;
+  // check the ports
+  if (sport == 80 || dport == 80 || sport == 8080 || dport == 8080 ||
+      sport == 8000 || dport == 8000)
+    return 1;
 
-    //check methid 
-    uint32_t tcp_hdr_len = tcp->tcp_off * 4;
-    uint32_t payload_offset = offset + tcp_hdr_len;
-    if (payload_offset >= caplen) return 0;
+  // check methid
+  uint32_t tcp_hdr_len = tcp->tcp_off * 4;
+  uint32_t payload_offset = offset + tcp_hdr_len;
+  if (payload_offset >= caplen) return 0;
 
-    const char *pl = (const char *)(pkt + payload_offset);
-    uint32_t plen = caplen - payload_offset;
+  const char* pl = (const char*)(pkt + payload_offset);
+  uint32_t plen = caplen - payload_offset;
 
-    if (plen >= 3 && (!memcmp(pl, "GET", 3) ||
-                     !memcmp(pl, "PUT", 3) ||
-                     !memcmp(pl, "POST", 4) ||
-                     !memcmp(pl, "HEAD", 4) ||
-                     !memcmp(pl, "HTTP", 4)))
-        return 1;
+  if (plen >= 3 && (!memcmp(pl, "GET", 3) || !memcmp(pl, "PUT", 3) ||
+                    !memcmp(pl, "POST", 4) || !memcmp(pl, "HEAD", 4) ||
+                    !memcmp(pl, "HTTP", 4)))
+    return 1;
 
-    return 0;
+  return 0;
 }
 
-//make new bins 
-static ts_bin_t *ts_make_bin_for_time(double t_rel) {
-    if (!ts_head) {
-        ts_bin_t *bin = calloc(1, sizeof(ts_bin_t));
-        if (!bin) return NULL;
-        bin->start_time = floor(t_rel / TS_WINDOW_SEC) * TS_WINDOW_SEC;
-        ts_head = ts_tail = bin;
-        return bin;
-    }
+// make new bins
+static ts_bin_t* ts_make_bin_for_time(double t_rel) {
+  if (!ts_head) {
+    ts_bin_t* bin = calloc(1, sizeof(ts_bin_t));
+    if (!bin) return NULL;
+    bin->start_time = floor(t_rel / TS_WINDOW_SEC) * TS_WINDOW_SEC;
+    ts_head = ts_tail = bin;
+    return bin;
+  }
 
-    while (t_rel >= ts_tail->start_time + TS_WINDOW_SEC) {
-        ts_bin_t *bin = calloc(1, sizeof(ts_bin_t));
-        if (!bin) return ts_tail; 
-        bin->start_time = ts_tail->start_time + TS_WINDOW_SEC;
-        ts_tail->next = bin;
-        ts_tail = bin;
-    }
+  while (t_rel >= ts_tail->start_time + TS_WINDOW_SEC) {
+    ts_bin_t* bin = calloc(1, sizeof(ts_bin_t));
+    if (!bin) return ts_tail;
+    bin->start_time = ts_tail->start_time + TS_WINDOW_SEC;
+    ts_tail->next = bin;
+    ts_tail = bin;
+  }
 
-    return ts_tail;
+  return ts_tail;
 }
 
-static void ts_update(double t_rel,
-                      const uint8_t *packet,
-                      const struct pcap_pkthdr *hdr)
-{
-    pthread_mutex_lock(&ts_lock);
+static void ts_update(double t_rel, const uint8_t* packet,
+                      const struct pcap_pkthdr* hdr) {
+  pthread_mutex_lock(&ts_lock);
 
-    ts_bin_t *bin = ts_make_bin_for_time(t_rel);
-    if (!bin) {
-        pthread_mutex_unlock(&ts_lock);
-        return;
-    }
-
-    bin->pkt_count++;
-    bin->byte_count += hdr->len;
-
-    total_pkts++;
-    total_bytes += hdr->len;
-
-   //l1
-    if (is_ipv4(packet, hdr->len)) {
-        bin->ipv4_count++;
-        total_ipv4_count++;
-    } else if (is_arp(packet, hdr->len)) {
-        bin->arp_count++;
-        total_arp_count++;
-    }
-
-    //l4
-    uint8_t p = 0;
-    if (is_ipv4(packet, hdr->len)) {
-        const sr_ip_hdr_t *ip =
-            (const sr_ip_hdr_t *)(packet + sizeof(sr_ethernet_hdr_t));
-        p = ip->ip_p;
-
-        if (p == 6) {
-            bin->tcp_count++;
-            total_tcp_count++;
-        } else if (p == 17) {
-            bin->udp_count++;
-            total_udp_count++;
-        } else if (p == 1) {
-            bin->icmp_count++;
-            total_icmp_count++;
-        }
-    }
-
-    /* HTTP */
-    if (is_http(packet, hdr->len)) {
-        bin->http_count++;
-        total_http_count++;
-    }
-
+  ts_bin_t* bin = ts_make_bin_for_time(t_rel);
+  if (!bin) {
     pthread_mutex_unlock(&ts_lock);
+    return;
+  }
+
+  bin->pkt_count++;
+  bin->byte_count += hdr->len;
+
+  total_pkts++;
+  total_bytes += hdr->len;
+
+  // l1
+  if (is_ipv4(packet, hdr->len)) {
+    bin->ipv4_count++;
+    total_ipv4_count++;
+  } else if (is_arp(packet, hdr->len)) {
+    bin->arp_count++;
+    total_arp_count++;
+  }
+
+  // l4
+  uint8_t p = 0;
+  if (is_ipv4(packet, hdr->len)) {
+    const sr_ip_hdr_t* ip =
+        (const sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+    p = ip->ip_p;
+
+    if (p == 6) {
+      bin->tcp_count++;
+      total_tcp_count++;
+    } else if (p == 17) {
+      bin->udp_count++;
+      total_udp_count++;
+    } else if (p == 1) {
+      bin->icmp_count++;
+      total_icmp_count++;
+    }
+  }
+
+  /* HTTP */
+  if (is_http(packet, hdr->len)) {
+    bin->http_count++;
+    total_http_count++;
+  }
+
+  pthread_mutex_unlock(&ts_lock);
 }
 
 void refresh_stats_window() {
@@ -798,14 +800,13 @@ void close_program() {
 
 void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
                    const uint8_t* packet) {
-  
-  options_t *opts = (options_t *)args;
+  options_t* opts = (options_t*)args;
 
   // filter first: only keep packets that match
   if (!match_protocol(packet, header->len, opts->protocol)) {
-      return;
+    return;
   }
- 
+
   // static state for numbering and time
   static unsigned int packet_count = 0;
   static struct timeval first_ts;
@@ -817,18 +818,16 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
     first_ts = header->ts;
   }
 
-  double t = (header->ts.tv_sec  - first_ts.tv_sec) +
+  double t = (header->ts.tv_sec - first_ts.tv_sec) +
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
   ts_update(t, packet, header);
 
   // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
-  packet_node_t* new_node =
-  create_packet_node(packet, header, packet_count, t);
+  packet_node_t* new_node = create_packet_node(packet, header, packet_count, t);
   add_to_packet_list(new_node);
   pthread_mutex_unlock(&packet_list_lock);
-
 
   if (match_protocol(packet, header->len, "tcp")) {
     // fprintf(stderr, "Processing TCP packet number %u\n", packet_count);
@@ -836,7 +835,7 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   }
 
   if (!new_node) {
-    //mem fail
+    // mem fail
     return;
   }
 
@@ -869,13 +868,14 @@ void display_sniffer_header() {
   mvwprintw(win_title, 0, DESTINATION_INDEX, "Destination");
   mvwprintw(win_title, 0, PROTOCOL_INDEX, "Protocol");
   mvwprintw(win_title, 0, LENGTH_INDEX, "Length");
-  
+
   wrefresh(win_title);
 }
 
 void display_packet_number() {
   // Print title containing packet number
-  win_packet_num = newwin(PACKET_NUM_ROWS, PACKET_NUM_COLS, PACKET_NUM_Y, PACKET_NUM_X);
+  win_packet_num =
+      newwin(PACKET_NUM_ROWS, PACKET_NUM_COLS, PACKET_NUM_Y, PACKET_NUM_X);
   werase(win_packet_num);
   wrefresh(win_packet_num);
   mvwprintw(win_packet_num, 0, 0, "  PACKET INFORMATION");
@@ -889,7 +889,7 @@ void display_key_window() {
   win_key = newwin(KEY_ROWS, KEY_COLS, KEY_Y, KEY_X);
   werase(win_key);
   wrefresh(win_key);
-  box(win_key, '|', '-');  
+  box(win_key, '|', '-');
   mvwprintw(win_key, 0, 0, "KEY COMMANDS");
   mvwprintw(win_key, 1, 2, "UP KEY");
   mvwprintw(win_key, 1, 13, "Scroll Up");
@@ -922,19 +922,21 @@ void display_key_window() {
 
 void refresh_info_pad() {
   wclrtoeol(info_pad);
-  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X,
+           INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
 }
 
 void display_header_info() {
   // Print header information for current line
-  if (!(packet_list != NULL && current_line >= 0 && current_line < get_packet_list_length(0, packet_list))){
+  if (!(packet_list != NULL && current_line >= 0 &&
+        current_line < get_packet_list_length(0, packet_list))) {
     return;
   }
 
-  packet_node_t *node = get_packet_by_index(current_line);
+  packet_node_t* node = get_packet_by_index(current_line);
   if (node == NULL) {
     return;
-  } 
+  }
 
   // Display packet number title
   werase(win_packet_num);
@@ -947,7 +949,7 @@ void display_header_info() {
   werase(info_pad);
   wrefresh(info_pad);
   // mvwprintw(info_pad, 0, 0, "%s", node->info);
-  char *info = node->info;
+  char* info = node->info;
   int info_length = strlen(info);
   char buf[info_length + 1];
   char line[info_length + 1];
@@ -976,7 +978,8 @@ void display_header_info() {
     line_count += 1;
     max_info_lines += 1;
 
-    char *http_info = http_hdr_to_str(node->http_msg->header, node->http_msg->header_len);
+    char* http_info =
+        http_hdr_to_str(node->http_msg->header, node->http_msg->header_len);
     if (http_info != NULL) {
       int http_info_len = strlen(http_info);
       sprintf(buf, "\t%s", "");
@@ -996,7 +999,7 @@ void display_header_info() {
       }
       free(http_info);
     }
-  } 
+  }
 
   refresh_info_pad();
 }
@@ -1006,7 +1009,7 @@ void create_header_info_pad() {
   info_pad = newpad(INFO_PAD_ROWS, MAX_COLS);
   wattron(pad, COLOR_PAIR(2));
 
-  if(info_pad == NULL) {
+  if (info_pad == NULL) {
     endwin();
     fprintf(stderr, "Error creating info pad: %s\n", strerror(errno));
     exit(1);
@@ -1014,7 +1017,8 @@ void create_header_info_pad() {
 
   // Packet Info title
   werase(info_pad);
-  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X, INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
+  prefresh(info_pad, current_info_line, 0, INFO_PAD_Y, INFO_PAD_X,
+           INFO_PAD_Y + INFO_ROWS_TO_DISPLAY - 1, INFO_PAD_COLS - 1);
 }
 
 /* ncurses dynamic terminal */
@@ -1023,7 +1027,7 @@ void initialize_windows() {
   pad = newpad(MAX_ROWS, MAX_COLS);
   wattron(pad, COLOR_PAIR(2));
 
-  if(pad == NULL) {
+  if (pad == NULL) {
     endwin();
     fprintf(stderr, "Error creating pad: %s\n", strerror(errno));
     exit(1);
@@ -1038,7 +1042,6 @@ void initialize_windows() {
   // Initialize window for packet number
   display_packet_number();
 
-
   // Initialize pad with header info
   create_header_info_pad();
 
@@ -1047,12 +1050,12 @@ void initialize_windows() {
 }
 
 void update_after_key_press() {
-    if (has_colors()) {
-      mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
-      mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
-    }
-    refresh_pad();
-    display_header_info();
+  if (has_colors()) {
+    mvwchgat(pad, current_line, 0, -1, A_REVERSE, 1, NULL);
+    mvwchgat(pad, previous_line, 0, -1, A_NORMAL, 2, NULL);
+  }
+  refresh_pad();
+  display_header_info();
 }
 
 void handle_sort() {
@@ -1062,11 +1065,11 @@ void handle_sort() {
   update_after_key_press();
 }
 
-void *handle_key_event(void *arg) {
+void* handle_key_event(void* arg) {
   int key;
-  while(1) {
+  while (1) {
     key = wgetch(stdscr);
-    switch(key) {
+    switch (key) {
       case KEY_UP:
         if (current_line <= 0) {
           current_line = 0;
@@ -1152,9 +1155,7 @@ void *handle_key_event(void *arg) {
 }
 
 /* Handling Ctrl-C */
-void handle_signal(int signal) {
- close_program();
-}
+void handle_signal(int signal) { close_program(); }
 
 void handle_resize_signal(int signal) {
   delete_windows();
@@ -1166,8 +1167,8 @@ int main(int argc, char* argv[]) {
   char errbuf[PCAP_ERRBUF_SIZE];
   pcap_if_t* devices;  // all devices
   pcap_if_t* device;   // selected device
-  int promisc = 1;  // promiscuous mode
-  int to_ms = 750;  // read timeout in ms
+  int promisc = 1;     // promiscuous mode
+  int to_ms = 750;     // read timeout in ms
   // struct pcap_pkthdr hdr;
 
   // Parse command line options
@@ -1214,10 +1215,10 @@ int main(int argc, char* argv[]) {
 
   // Handle resizing
   signal(SIGWINCH, handle_resize_signal);
-  
+
   // Initiate ncurses
   initscr();
-  if(has_colors()) {
+  if (has_colors()) {
     start_color();
     init_pair(1, COLOR_MAGENTA, COLOR_BLACK);
     init_pair(2, COLOR_WHITE, COLOR_BLACK);
@@ -1231,7 +1232,9 @@ int main(int argc, char* argv[]) {
 
   if (terminal_x < MAX_COLS || terminal_y < INFO_PAD_Y + INFO_ROWS_TO_DISPLAY) {
     endwin();
-    printf("Increase terminal size and run again in order to view packets properly\n");
+    printf(
+        "Increase terminal size and run again in order to view packets "
+        "properly\n");
     exit(0);
   }
 
@@ -1242,7 +1245,8 @@ int main(int argc, char* argv[]) {
   initialize_windows();
 
   // -1 means to sniff until error occurs
-  int rc = pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t *)&options);
+  int rc =
+      pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t*)&options);
   printf("pcap_loop returned with code %d\n", rc);
 
   // Close session
