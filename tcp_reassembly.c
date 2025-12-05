@@ -1,8 +1,10 @@
 #include "tcp_reassembly.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "protocol.h"
 #include "utils.h"
@@ -160,20 +162,42 @@ tcp_stream_t* init_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
   stream->segments = NULL;
   stream->next = NULL;
 
+  stream->last_active = time(NULL);
   return stream;
 }
 
 tcp_stream_t* find_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
                               uint16_t src_port, uint16_t dest_port) {
-  tcp_stream_t* stream = streams_list;
-  while (stream != NULL) {
-    if (stream->src_ip == src_ip && stream->dest_ip == dest_ip &&
-        stream->src_port == src_port && stream->dest_port == dest_port) {
-      return stream;
+  time_t timeout = 7200;  // 2h -- based on the tcp keep alive time
+  time_t now = time(NULL);
+
+  tcp_stream_t* match = NULL;
+  tcp_stream_t* prev = NULL;
+  tcp_stream_t* curr = streams_list;
+
+  while (curr != NULL) {
+    if (difftime(now, curr->last_active) > timeout) {
+      if (prev == NULL) {
+        streams_list = curr->next;
+      } else {
+        prev->next = curr->next;
+      }
+      tcp_stream_t* inactive = curr;
+      curr = curr->next;
+      destroy_tcp_stream(inactive);
+      continue;
     }
-    stream = stream->next;
+
+    if (curr->src_ip == src_ip && curr->dest_ip == dest_ip &&
+        curr->src_port == src_port && curr->dest_port == dest_port) {
+      match = curr;
+      break;
+    }
+
+    prev = curr;
+    curr = curr->next;
   }
-  return NULL;
+  return match;
 }
 
 tcp_segment_t* create_tcp_segment(uint32_t id, uint32_t seq, uint32_t len,
@@ -416,8 +440,9 @@ void process_tcp_packet(packet_node_t* packet_node) {
 
   // find or create tcp stream
   tcp_stream_t* stream = find_tcp_stream(src_ip, dest_ip, src_port, dest_port);
-  if (!stream) {
-    // open a new stream only if SYN flag is set
+  if (stream) {
+    stream->last_active = time(NULL);
+  } else {
     if (!syn_flag) {
       return;
     }

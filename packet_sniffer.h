@@ -3,6 +3,7 @@
 
 #include <pcap.h>
 #include <stdint.h>
+#include <time.h>
 
 #include "protocol.h"
 
@@ -45,15 +46,18 @@ struct tcp_segment {
 } typedef tcp_segment_t;
 
 struct tcp_stream {
-  uint32_t src_ip;          // source IP address
-  uint32_t dest_ip;         // destination IP address
-  uint16_t src_port;        // source port
-  uint16_t dest_port;       // destination port
+  uint32_t src_ip;     // source IP address
+  uint32_t dest_ip;    // destination IP address
+  uint16_t src_port;   // source port
+  uint16_t dest_port;  // destination port
+
   uint32_t init_seq;        // initial sequence number
   uint8_t* http_buf;        // reassembled HTTP data
   uint32_t http_buf_len;    // length of reassembled HTTP data
   tcp_segment_t* segments;  // linked list of segments
   struct tcp_stream* next;
+
+  time_t last_active;  // last activity timestamp
 } typedef tcp_stream_t;
 
 #endif
