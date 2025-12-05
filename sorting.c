@@ -3,13 +3,13 @@
 #include <arpa/inet.h>
 #include <string.h>
 
-#include "sr_protocol.h"
-#include "sr_utils.h"
+#include "protocol.h"
+#include "utils.h"
 
 int match_protocol(const uint8_t* packet, uint32_t len, const char* proto) {
   if (!proto || strcmp(proto, "any") == 0) return 1;
 
-  if (len < sizeof(sr_ethernet_hdr_t)) return 0;
+  if (len < sizeof(ethernet_hdr_t)) return 0;
   const uint8_t* buf = (const uint8_t*)packet;
 
   uint16_t ethtype = ethertype((uint8_t*)buf);
@@ -21,11 +21,11 @@ int match_protocol(const uint8_t* packet, uint32_t len, const char* proto) {
 
   /* IP */
   if (ethtype != ethertype_ip ||
-      len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)) {
+      len < sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t)) {
     return 0;
   }
 
-  const uint8_t* ip_buf = buf + sizeof(sr_ethernet_hdr_t);
+  const uint8_t* ip_buf = buf + sizeof(ethernet_hdr_t);
   uint8_t ip_proto = ip_protocol((uint8_t*)ip_buf);
 
   if (strcmp(proto, "icmp") == 0) return ip_proto == ip_protocol_icmp;
@@ -39,14 +39,12 @@ int match_protocol(const uint8_t* packet, uint32_t len, const char* proto) {
     if (ip_proto != ip_protocol_tcp) return 0;
 
     /* TCP header*/
-    if (len < sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +
-                  sizeof(sr_tcp_hdr_t)) {
+    if (len < sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) + sizeof(tcp_hdr_t)) {
       return 0;
     }
 
-    const sr_tcp_hdr_t* tcp_hdr =
-        (const sr_tcp_hdr_t*)(buf + sizeof(sr_ethernet_hdr_t) +
-                              sizeof(sr_ip_hdr_t));
+    const tcp_hdr_t* tcp_hdr =
+        (const tcp_hdr_t*)(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
 
     uint16_t sport = ntohs(tcp_hdr->tcp_src);
     uint16_t dport = ntohs(tcp_hdr->tcp_dst);

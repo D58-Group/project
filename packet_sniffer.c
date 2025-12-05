@@ -11,10 +11,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "protocol.h"
 #include "sorting.h"
-#include "sr_protocol.h"
-#include "sr_utils.h"
 #include "tcp_reassembly.h"
+#include "utils.h"
 
 #define MAX_ROWS 30000
 #define MAX_COLS 120
@@ -341,21 +341,19 @@ packet_node_t* create_packet_node(const uint8_t* packet,
   memset(node->ar_tha, 0, ETHER_ADDR_LEN);
 
   // IP handling
-  if (packet_hdr->len >= sizeof(sr_ethernet_hdr_t)) {
+  if (packet_hdr->len >= sizeof(ethernet_hdr_t)) {
     uint16_t ethtype_val = ethertype(node->packet);
     if (ethtype_val == ethertype_ip &&
-        packet_hdr->len >= sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)) {
-      const sr_ip_hdr_t* ip =
-          (const sr_ip_hdr_t*)(node->packet + sizeof(sr_ethernet_hdr_t));
+        packet_hdr->len >= sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t)) {
+      const ip_hdr_t* ip =
+          (const ip_hdr_t*)(node->packet + sizeof(ethernet_hdr_t));
 
       node->src_ip = ntohl(ip->ip_src);
       node->dst_ip = ntohl(ip->ip_dst);
       node->proto = ip->ip_p;
     } else if (ethtype_val == ethertype_arp &&
-               packet_hdr->len >=
-                   sizeof(sr_ethernet_hdr_t) + sizeof(sr_arp_hdr_t)) {
-      sr_arp_hdr_t* arp_hdr =
-          (sr_arp_hdr_t*)(node->packet + sizeof(sr_ethernet_hdr_t));
+               packet_hdr->len >= sizeof(ethernet_hdr_t) + sizeof(arp_hdr_t)) {
+      arp_hdr_t* arp_hdr = (arp_hdr_t*)(node->packet + sizeof(ethernet_hdr_t));
       node->proto = (uint8_t)ethertype_arp;
       node->src_ip = ntohl(arp_hdr->ar_sip);
       node->dst_ip = ntohl(arp_hdr->ar_tip);
@@ -581,13 +579,13 @@ void update_pad() {
 
 // check if is ip4
 static inline int is_ipv4(const uint8_t* pkt, uint32_t caplen) {
-  if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
+  if (caplen < sizeof(ethernet_hdr_t)) return 0;
   return ethertype((uint8_t*)pkt) == ethertype_ip;
 }
 
 // check if arp
 static inline int is_arp(const uint8_t* pkt, uint32_t caplen) {
-  if (caplen < sizeof(sr_ethernet_hdr_t)) return 0;
+  if (caplen < sizeof(ethernet_hdr_t)) return 0;
   return ethertype((uint8_t*)pkt) == ethertype_arp;
 }
 
@@ -596,18 +594,18 @@ static int is_http(const uint8_t* pkt, uint32_t caplen) {
   // should be ip
   if (!is_ipv4(pkt, caplen)) return 0;
 
-  const sr_ip_hdr_t* ip = (const sr_ip_hdr_t*)(pkt + sizeof(sr_ethernet_hdr_t));
+  const ip_hdr_t* ip = (const ip_hdr_t*)(pkt + sizeof(ethernet_hdr_t));
 
   // should be tcp
   if (ip->ip_p != 6) return 0;
 
   uint32_t ip_hdr_len = ip->ip_hl * 4;
-  uint32_t offset = sizeof(sr_ethernet_hdr_t) + ip_hdr_len;
+  uint32_t offset = sizeof(ethernet_hdr_t) + ip_hdr_len;
 
-  if (caplen < offset + sizeof(sr_tcp_hdr_t)) return 0;
+  if (caplen < offset + sizeof(tcp_hdr_t)) return 0;
 
-  const sr_tcp_hdr_t* tcp =
-      (const sr_tcp_hdr_t*)(pkt + sizeof(sr_ethernet_hdr_t) + ip_hdr_len);
+  const tcp_hdr_t* tcp =
+      (const tcp_hdr_t*)(pkt + sizeof(ethernet_hdr_t) + ip_hdr_len);
 
   uint16_t sport = ntohs(tcp->tcp_src);
   uint16_t dport = ntohs(tcp->tcp_dst);
@@ -682,8 +680,7 @@ static void ts_update(double t_rel, const uint8_t* packet,
   // l4
   uint8_t p = 0;
   if (is_ipv4(packet, hdr->len)) {
-    const sr_ip_hdr_t* ip =
-        (const sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+    const ip_hdr_t* ip = (const ip_hdr_t*)(packet + sizeof(ethernet_hdr_t));
     p = ip->ip_p;
 
     if (p == 6) {

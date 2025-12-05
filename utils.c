@@ -1,10 +1,10 @@
-#include "sr_utils.h"
+#include "utils.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "sr_protocol.h"
+#include "protocol.h"
 
 uint16_t cksum(const void* _data, int len) {
   const uint8_t* data = _data;
@@ -18,12 +18,12 @@ uint16_t cksum(const void* _data, int len) {
 }
 
 uint16_t ethertype(uint8_t* buf) {
-  sr_ethernet_hdr_t* ehdr = (sr_ethernet_hdr_t*)buf;
+  ethernet_hdr_t* ehdr = (ethernet_hdr_t*)buf;
   return ntohs(ehdr->ether_type);
 }
 
 uint8_t ip_protocol(uint8_t* buf) {
-  sr_ip_hdr_t* iphdr = (sr_ip_hdr_t*)(buf);
+  ip_hdr_t* iphdr = (ip_hdr_t*)(buf);
   return iphdr->ip_p;
 }
 
@@ -62,7 +62,7 @@ void print_addr_ip_int(uint32_t ip) {
 
 /* Prints out fields in Ethernet header. */
 void print_hdr_eth(uint8_t* buf) {
-  sr_ethernet_hdr_t* ehdr = (sr_ethernet_hdr_t*)buf;
+  ethernet_hdr_t* ehdr = (ethernet_hdr_t*)buf;
   fprintf(stderr, "ETHERNET header:\n");
   fprintf(stderr, "\tdestination: ");
   print_addr_eth(ehdr->ether_dhost);
@@ -73,7 +73,7 @@ void print_hdr_eth(uint8_t* buf) {
 
 /* Prints out fields in IP header. */
 void print_hdr_ip(uint8_t* buf) {
-  sr_ip_hdr_t* iphdr = (sr_ip_hdr_t*)(buf);
+  ip_hdr_t* iphdr = (ip_hdr_t*)(buf);
 
   uint8_t ihl_words = iphdr->ip_hl;
   uint16_t total_len = ntohs(iphdr->ip_len);
@@ -131,7 +131,7 @@ void print_hdr_ip(uint8_t* buf) {
 
 /* Prints out ICMP header fields */
 void print_hdr_icmp(uint8_t* buf) {
-  sr_icmp_hdr_t* icmp_hdr = (sr_icmp_hdr_t*)(buf);
+  icmp_hdr_t* icmp_hdr = (icmp_hdr_t*)(buf);
   fprintf(stderr, "ICMP header:\n");
   fprintf(stderr, "\ttype: %d\n", icmp_hdr->icmp_type);
   fprintf(stderr, "\tcode: %d\n", icmp_hdr->icmp_code);
@@ -144,7 +144,7 @@ void print_hdr_icmp(uint8_t* buf) {
 }
 
 void print_hdr_udp(uint8_t* buf) {
-  sr_udp_hdr_t* udp_hdr = (sr_udp_hdr_t*)(buf);
+  udp_hdr_t* udp_hdr = (udp_hdr_t*)(buf);
   fprintf(stderr, "UDP header:\n");
   // host order
   fprintf(stderr, "\tsrc: %u\n", (unsigned)ntohs(udp_hdr->udp_src));
@@ -155,7 +155,7 @@ void print_hdr_udp(uint8_t* buf) {
 }
 
 void print_hdr_tcp(uint8_t* buf) {
-  sr_tcp_hdr_t* tcp_hdr = (sr_tcp_hdr_t*)buf;
+  tcp_hdr_t* tcp_hdr = (tcp_hdr_t*)buf;
 
   uint8_t data_offset = (tcp_hdr->tcp_off >> 4);
   uint8_t flags = tcp_hdr->tcp_flags;
@@ -203,7 +203,7 @@ void print_hdr_tcp(uint8_t* buf) {
 }
 
 void print_hdr_arp(uint8_t* buf) {
-  sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t*)(buf);
+  arp_hdr_t* arp_hdr = (arp_hdr_t*)(buf);
   fprintf(stderr, "ARP header\n");
   fprintf(stderr, "\thardware type: %d\n", ntohs(arp_hdr->ar_hrd));
   fprintf(stderr, "\tprotocol type: %d\n", ntohs(arp_hdr->ar_pro));
@@ -241,7 +241,7 @@ void print_hdr_arp(uint8_t* buf) {
 /* Prints out all possible headers, starting from Ethernet */
 void print_hdrs(uint8_t* buf, uint32_t length) {
   /* Ethernet */
-  int minlength = sizeof(sr_ethernet_hdr_t);
+  int minlength = sizeof(ethernet_hdr_t);
   if (length < minlength) {
     fprintf(stderr, "Failed to print ETHERNET header, insufficient length\n");
     return;
@@ -251,47 +251,47 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
   print_hdr_eth(buf);
 
   if (ethtype == ethertype_ip) { /* IP */
-    minlength += sizeof(sr_ip_hdr_t);
+    minlength += sizeof(ip_hdr_t);
     if (length < minlength) {
       fprintf(stderr, "Failed to print IP header, insufficient length\n");
       return;
     }
 
-    print_hdr_ip(buf + sizeof(sr_ethernet_hdr_t));
-    uint8_t ip_proto = ip_protocol(buf + sizeof(sr_ethernet_hdr_t));
+    print_hdr_ip(buf + sizeof(ethernet_hdr_t));
+    uint8_t ip_proto = ip_protocol(buf + sizeof(ethernet_hdr_t));
 
     if (ip_proto == ip_protocol_icmp) { /* ICMP */
-      minlength += sizeof(sr_icmp_hdr_t);
+      minlength += sizeof(icmp_hdr_t);
       if (length < minlength)
         fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
       else
-        print_hdr_icmp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        print_hdr_icmp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
     } else if (ip_proto == ip_protocol_udp) { /* UDP */
-      minlength += sizeof(sr_udp_hdr_t);
+      minlength += sizeof(udp_hdr_t);
       if (length < minlength)
         fprintf(stderr, "Failed to print UDP header, insufficient length\n");
       else
-        print_hdr_udp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
+        print_hdr_udp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
     } else if (ip_proto == ip_protocol_tcp) { /* TCP */
-      minlength += sizeof(sr_tcp_hdr_t);
+      minlength += sizeof(tcp_hdr_t);
       if (length < minlength)
         fprintf(stderr, "Failed to print TCP header, insufficient length\n");
       else {
-        print_hdr_tcp(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t));
-        // sr_tcp_hdr_t *tcp_hdr = (sr_tcp_hdr_t *)(buf +
-        // sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t)); int tcp_data_offset
+        print_hdr_tcp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
+        // tcp_hdr_t *tcp_hdr = (tcp_hdr_t *)(buf +
+        // sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t)); int tcp_data_offset
         // = tcp_hdr->tcp_off >> 4;  /* get data offset (last 4 bytes are
         // reserved) */ int tcp_header_length = tcp_data_offset * 4; if (length
-        // > sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +
+        // > sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) +
         // tcp_header_length) { fprintf(stderr, "\tTCP payload\n"); size_t
         // payload_len =
-        //   length - tcp_header_length - sizeof(sr_ethernet_hdr_t) -
-        //   sizeof(sr_ip_hdr_t);
+        //   length - tcp_header_length - sizeof(ethernet_hdr_t) -
+        //   sizeof(ip_hdr_t);
 
         // fprintf(stderr, "\tHeader length: %d\n", tcp_header_length);
         // fprintf(stderr, "\tPayload length: %zu\n", payload_len);
 
-        // fwrite(buf + sizeof(sr_ethernet_hdr_t) + sizeof(sr_ip_hdr_t) +
+        // fwrite(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) +
         // tcp_header_length,
         //   1, payload_len, stderr);
         // fwrite("\n", 1, 1, stderr);
@@ -301,11 +301,11 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
   }
 
   else if (ethtype == ethertype_arp) { /* ARP */
-    minlength += sizeof(sr_arp_hdr_t);
+    minlength += sizeof(arp_hdr_t);
     if (length < minlength)
       fprintf(stderr, "Failed to print ARP header, insufficient length\n");
     else
-      print_hdr_arp(buf + sizeof(sr_ethernet_hdr_t));
+      print_hdr_arp(buf + sizeof(ethernet_hdr_t));
   } else {
     fprintf(stderr, "Unrecognized Ethernet Type: %d\n", ethtype);
   }
@@ -319,8 +319,7 @@ enum protocol get_protocol(const uint8_t* packet) {
   if (ether_type == ethertype_arp) {
     return ARP;
   } else if (ether_type == ethertype_ip) {
-    uint8_t ip_proto =
-        ip_protocol((uint8_t*)packet + sizeof(sr_ethernet_hdr_t));
+    uint8_t ip_proto = ip_protocol((uint8_t*)packet + sizeof(ethernet_hdr_t));
     if (ip_proto == ip_protocol_icmp) {
       return ICMP;
     } else if (ip_proto == ip_protocol_udp) {
@@ -368,13 +367,13 @@ void convert_addr_ip_int_to_str(uint32_t ip, char* str_addr) {
 void get_source_dest(char* src, char* dst, const uint8_t* packet) {
   uint16_t ether_type = ethertype((uint8_t*)packet);
   if (ether_type == ethertype_arp) {
-    sr_arp_hdr_t* arp_hdr = (sr_arp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+    arp_hdr_t* arp_hdr = (arp_hdr_t*)(packet + sizeof(ethernet_hdr_t));
     // sender mac
     convert_addr_eth_to_str(arp_hdr->ar_sha, src);
     // destination mac
     convert_addr_eth_to_str(arp_hdr->ar_tha, dst);
   } else if (ether_type == ethertype_ip) {
-    sr_ip_hdr_t* iphdr = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+    ip_hdr_t* iphdr = (ip_hdr_t*)(packet + sizeof(ethernet_hdr_t));
     // sender ip address
     convert_addr_ip_int_to_str(ntohl(iphdr->ip_src), src);
     // destination ip address

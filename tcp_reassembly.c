@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "sr_protocol.h"
-#include "sr_utils.h"
+#include "protocol.h"
+#include "utils.h"
 
 tcp_stream_t* streams_list = NULL;
 
@@ -386,10 +386,10 @@ void process_tcp_packet(packet_node_t* packet_node) {
   uint32_t len = packet_node->length;
 
   // parse headers
-  sr_ip_hdr_t* ip_hdr = (sr_ip_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t));
+  ip_hdr_t* ip_hdr = (ip_hdr_t*)(packet + sizeof(ethernet_hdr_t));
   uint16_t ip_hdr_len = ip_hdr->ip_hl * 4;
-  sr_tcp_hdr_t* tcp_hdr =
-      (sr_tcp_hdr_t*)(packet + sizeof(sr_ethernet_hdr_t) + ip_hdr_len);
+  tcp_hdr_t* tcp_hdr =
+      (tcp_hdr_t*)(packet + sizeof(ethernet_hdr_t) + ip_hdr_len);
 
   // use these to identify the stream
   uint32_t src_ip = ntohl(ip_hdr->ip_src);
@@ -400,7 +400,7 @@ void process_tcp_packet(packet_node_t* packet_node) {
   // get segment info
   uint32_t seq = ntohl(tcp_hdr->tcp_seq);
   uint16_t tcp_offset = (tcp_hdr->tcp_off >> 4) * 4;
-  uint32_t data_offset = sizeof(sr_ethernet_hdr_t) + ip_hdr_len + tcp_offset;
+  uint32_t data_offset = sizeof(ethernet_hdr_t) + ip_hdr_len + tcp_offset;
   uint8_t* data = NULL;
   if (len > data_offset) {
     data = (uint8_t*)(packet + data_offset);

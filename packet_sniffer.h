@@ -4,8 +4,8 @@
 #include <pcap.h>
 #include <stdint.h>
 
-#include "sr_protocol.h"
-#include "sr_utils.h"
+#include "protocol.h"
+#include "utils.h"
 
 struct tcp_segment {
   uint32_t id;               // frame number

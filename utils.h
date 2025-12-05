@@ -1,5 +1,5 @@
-#ifndef SR_UTILS_H
-#define SR_UTILS_H
+#ifndef UTILS_H
+#define UTILS_H
 
 uint16_t cksum(const void* _data, int len);
 
@@ -28,4 +28,4 @@ void get_source_dest(char* src, char* dst, const uint8_t* packet);
 // used to put the print_hdrs output in a string
 char* format_hdrs_to_string(uint8_t* buf, uint32_t length);
 char* http_hdr_to_str(uint8_t* buf, uint32_t length);
-#endif /* -- SR_UTILS_H -- */
+#endif /* -- UTILS_H -- */
