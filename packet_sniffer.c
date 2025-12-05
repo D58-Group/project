@@ -444,7 +444,7 @@ void delete_packet_nodes(packet_node_t* node) {
       free(node->info);
     }
     if (node->http_msg) {
-      free(node->http_msg);
+      free_http_message(node->http_msg);
     }
     free(node);
     node = next;
