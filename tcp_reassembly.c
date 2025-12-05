@@ -41,34 +41,34 @@ int is_http_rep(uint8_t* data, uint32_t len) {
 }
 
 void print_tcp_stream(tcp_stream_t* stream) {
-  fprintf(stdout, "-------------\n");
-  fprintf(stdout, "TCP Stream:\n");
-  fprintf(stdout, "From: \n");
+  printf("-------------\n");
+  printf("TCP Stream:\n");
+  printf("From: \n");
   print_addr_ip_int(stream->src_ip);
-  fprintf(stdout, "Port %u\n", stream->src_port);
-  fprintf(stdout, "To: \n");
+  printf("Port %u\n", stream->src_port);
+  printf("To: \n");
   print_addr_ip_int(stream->dest_ip);
-  fprintf(stdout, "Port %u\n", stream->dest_port);
+  printf("Port %u\n", stream->dest_port);
 
   tcp_segment_t* segment = stream->segments;
   while (segment != NULL) {
-    fprintf(stdout, "Segment:\n");
-    fprintf(stdout, "\tID: %u\n", segment->id);
-    fprintf(stdout, "\tSeq: %u\n", segment->seq);
-    fprintf(stdout, "\tRel Seq: %u\n", segment->seq - stream->init_seq);
-    fprintf(stdout, "\tLen: %u\n", segment->len);
-    fprintf(stdout, "-------------\n");
+    printf("Segment:\n");
+    printf("\tID: %u\n", segment->id);
+    printf("\tSeq: %u\n", segment->seq);
+    printf("\tRel Seq: %u\n", segment->seq - stream->init_seq);
+    printf("\tLen: %u\n", segment->len);
+    printf("-------------\n");
 
     if (segment->len > 0 && segment->data != NULL) {
       for (uint32_t i = 0; i < segment->len; i++) {
         char c = segment->data[i];
         if (c >= 32 && c <= 126) {  // printable characters
-          fprintf(stdout, "%c", c);
+          printf("%c", c);
         } else {
-          fprintf(stdout, ".");
+          printf(".");
         }
       }
-      fprintf(stdout, "\n");
+      printf("\n");
     }
     segment = segment->next;
   }
