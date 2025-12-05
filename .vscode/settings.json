@@ -1,6 +1,0 @@
-{
-  "files.associations": {
-    "*.ddl": "sql",
-    "utils.h": "c"
-  }
-}
