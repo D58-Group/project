@@ -11,7 +11,7 @@ tcp_stream_t* streams_list = NULL;
 
 /* HELPER FUNCTIONS */
 
-int find_substr(uint8_t* data, uint32_t len, const char* substr) {
+int find_str(uint8_t* data, uint32_t len, const char* substr) {
   uint32_t substr_len = strlen(substr);
   for (uint32_t i = 0; i <= len - substr_len; i++) {
     if (memcmp(data + i, substr, substr_len) == 0) {
@@ -21,7 +21,7 @@ int find_substr(uint8_t* data, uint32_t len, const char* substr) {
   return -1;
 }
 
-int is_http_request(uint8_t* data, uint32_t len) {
+int is_http_req(uint8_t* data, uint32_t len) {
   const char* methods[] = {"GET ",   "POST ",   "HEAD ",   "PUT ",
                            "PATCH ", "DELETE ", "OPTIONS "};
   for (int i = 0; i < 7; i++) {
@@ -34,7 +34,7 @@ int is_http_request(uint8_t* data, uint32_t len) {
   return 0;
 }
 
-int is_http_response(uint8_t* data, uint32_t len) {
+int is_http_rep(uint8_t* data, uint32_t len) {
   return len >= 5 && memcmp(data, "HTTP/", 5) == 0;
 }
 
@@ -93,30 +93,53 @@ char* tcp_stream_to_str(tcp_stream_t* stream) {
   return output;
 }
 
-/* DATA CLEAN UP */
-
-void free_tcp_stream(tcp_stream_t* stream) {
-  tcp_segment_t* segment = stream->segments;
-  while (segment != NULL) {
-    tcp_segment_t* next = segment->next;
-    free(segment->data);
-    free(segment);
-    segment = next;
-  }
-  free(stream);
-}
-
-void free_all_tcp_streams() {
-  tcp_stream_t* stream = streams_list;
-  while (stream != NULL) {
-    tcp_stream_t* next = stream->next;
-    free_tcp_stream(stream);
-    stream = next;
-  }
-  streams_list = NULL;
-}
-
 /* TCP STREAM MANAGEMENT */
+
+http_message_t* create_http_message(uint8_t* header, uint32_t header_len,
+                                    uint8_t* data, uint32_t data_len) {
+  http_message_t* http_msg = malloc(sizeof(http_message_t));
+  if (!http_msg) {
+    return NULL;
+  }
+
+  // copy header
+  http_msg->header = malloc(header_len);
+  if (!http_msg->header) {
+    free(http_msg);
+    return NULL;
+  }
+  memcpy(http_msg->header, header, header_len);
+  http_msg->header_len = header_len;
+
+  // copy data (if any)
+  if (data_len > 0) {
+    http_msg->data = malloc(data_len);
+    if (!http_msg->data) {
+      free(http_msg->header);
+      free(http_msg);
+      return NULL;
+    }
+    memcpy(http_msg->data, data, data_len);
+    http_msg->data_len = data_len;
+  } else {
+    http_msg->data = NULL;
+    http_msg->data_len = 0;
+  }
+
+  return http_msg;
+}
+
+void free_http_message(http_message_t* http_msg) {
+  if (http_msg) {
+    if (http_msg->header) {
+      free(http_msg->header);
+    }
+    if (http_msg->data) {
+      free(http_msg->data);
+    }
+    free(http_msg);
+  }
+}
 
 tcp_stream_t* init_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
                               uint16_t src_port, uint16_t dest_port,
@@ -193,7 +216,7 @@ void insert_tcp_segment(tcp_stream_t* stream, tcp_segment_t* new_segment) {
   }
 }
 
-void remove_tcp_stream(tcp_stream_t* stream) {
+void destroy_tcp_stream(tcp_stream_t* stream) {
   if (streams_list == NULL || stream == NULL) {
     return;
   }
@@ -213,7 +236,7 @@ void remove_tcp_stream(tcp_stream_t* stream) {
   }
 }
 
-void remove_first_n_tcp_segments(tcp_stream_t* stream, int n) {
+void destroy_first_n_tcp_segments(tcp_stream_t* stream, int n) {
   tcp_segment_t* curr = stream->segments;
   tcp_segment_t* prev = NULL;
   int count = 0;
@@ -228,6 +251,27 @@ void remove_first_n_tcp_segments(tcp_stream_t* stream, int n) {
   stream->segments = curr;
 }
 
+void free_tcp_stream(tcp_stream_t* stream) {
+  tcp_segment_t* segment = stream->segments;
+  while (segment != NULL) {
+    tcp_segment_t* next = segment->next;
+    free(segment->data);
+    free(segment);
+    segment = next;
+  }
+  free(stream);
+}
+
+void free_all_tcp_streams() {
+  tcp_stream_t* stream = streams_list;
+  while (stream != NULL) {
+    tcp_stream_t* next = stream->next;
+    free_tcp_stream(stream);
+    stream = next;
+  }
+  streams_list = NULL;
+}
+
 /* HTTP REASSEMBLY */
 
 http_message_t* try_reassembling_http(tcp_stream_t* stream) {
@@ -235,9 +279,9 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
     return NULL;
   }
 
-  int http_verified = 0;
-  int http_buf_len = 0;
-  uint8_t* http_buf = NULL;
+  int is_http = 0;
+  int buf_len = 0;
+  uint8_t* buf = NULL;
 
   int segment_count = 0;
   tcp_segment_t* prev = NULL;
@@ -246,107 +290,86 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
   while (curr != NULL) {
     // check if we have the next segment in sequence
     if (prev != NULL && curr->seq != prev->seq + prev->len) {
-      // missing segment
-      free(http_buf);
+      free(buf);
       return NULL;
     }
 
     segment_count++;
 
     // increase buffer size
-    http_buf = realloc(http_buf, http_buf_len + curr->len);
-    if (!http_buf) {
+    buf = realloc(buf, buf_len + curr->len);
+    if (!buf) {
       return NULL;
     }
 
     // append segment data to buffer
-    memcpy(http_buf + http_buf_len, curr->data, curr->len);
-    http_buf_len += curr->len;
+    memcpy(buf + buf_len, curr->data, curr->len);
+    buf_len += curr->len;
 
-    // check that this is an http stream
-    if (!http_verified && http_buf_len >= 4) {
-      if (is_http_request(http_buf, http_buf_len) ||
-          is_http_response(http_buf, http_buf_len)) {
-        http_verified = 1;
+    // check that this is indeed an http stream
+    if (!is_http && buf_len >= 7) {
+      if (is_http_req(buf, buf_len) || is_http_rep(buf, buf_len)) {
+        is_http = 1;
       } else {
-        // not an http stream
-        free(http_buf);
+        free(buf);
         return NULL;
       }
     }
 
     // check if we have a complete http message
-    if (http_buf_len >= 4) {
-      // check if we have the end of http header
-      int hdr_end = find_substr(http_buf, http_buf_len, "\r\n\r\n");
+    if (buf_len >= 4) {
+      // check if we have the full http header
+      int hdr_end = find_str(buf, buf_len, "\r\n\r\n");
       if (hdr_end != -1) {
         hdr_end += 4;
 
         // check for content-length header
-        int conlen_start = find_substr(http_buf, hdr_end, "Content-Length: ");
-        if (conlen_start != -1) {
-          // content-length found
-          conlen_start += strlen("Content-Length: ");
+        int cl_start = find_str(buf, hdr_end, "Content-Length: ");
+        if (cl_start != -1) {
+          cl_start += strlen("Content-Length: ");
 
           // find end of content-length line
-          int conlen_end = find_substr(http_buf + conlen_start,
-                                       hdr_end - conlen_start, "\r\n");
+          int cl_end = find_str(buf + cl_start, hdr_end - cl_start, "\r\n");
+          if (cl_end != -1) {
+            cl_end += cl_start;
 
-          if (conlen_end != -1) {
-            // extract content length
-            conlen_end += conlen_start;
-
-            // allocate string for content length
-            char conlen_str[conlen_end - conlen_start + 1];
-            memcpy(conlen_str, http_buf + conlen_start,
-                   conlen_end - conlen_start);
-            conlen_str[conlen_end - conlen_start] = '\0';
+            // extract content length as string
+            char cl_str[cl_end - cl_start + 1];
+            memcpy(cl_str, buf + cl_start, cl_end - cl_start);
+            cl_str[cl_end - cl_start] = '\0';
 
             // convert to integer
-            int conlen = atoi(conlen_str);
+            int content_len = atoi(cl_str);
 
-            // total http message length
-            int http_msg_len = hdr_end + conlen;
+            // total http data length
+            int http_data_len = hdr_end + content_len;
 
             // should be equal but just in case
-            if (http_buf_len >= http_msg_len) {
-              http_message_t* reassembled = malloc(sizeof(http_message_t));
-              if (!reassembled) {
-                free(http_buf);
+            if (buf_len >= http_data_len) {
+              // create http message
+              http_message_t* http_msg =
+                  create_http_message(buf, hdr_end, buf + hdr_end, content_len);
+              if (!http_msg) {
+                free(buf);
                 return NULL;
               }
-
-              reassembled->header = malloc(hdr_end);
-              memcpy(reassembled->header, http_buf, hdr_end);
-              reassembled->header_len = hdr_end;
-
-              reassembled->data = malloc(conlen);
-              memcpy(reassembled->data, http_buf + hdr_end, conlen);
-              reassembled->data_len = conlen;
-
-              remove_first_n_tcp_segments(stream, segment_count);
-              free(http_buf);
-              return reassembled;
+              // remove used segments from stream
+              destroy_first_n_tcp_segments(stream, segment_count);
+              free(buf);
+              return http_msg;
             }
           }
         } else {
           // no content-length, assume header only
-          http_message_t* reassembled = malloc(sizeof(http_message_t));
-          if (!reassembled) {
-            free(http_buf);
+          http_message_t* http_msg = create_http_message(buf, hdr_end, NULL, 0);
+          if (!http_msg) {
+            free(buf);
             return NULL;
           }
-
-          reassembled->header = malloc(hdr_end);
-          memcpy(reassembled->header, http_buf, hdr_end);
-          reassembled->header_len = hdr_end;
-
-          reassembled->data = NULL;
-          reassembled->data_len = 0;
-
-          remove_first_n_tcp_segments(stream, segment_count);
-          free(http_buf);
-          return reassembled;
+          // remove used segments from stream
+          destroy_first_n_tcp_segments(stream, segment_count);
+          free(buf);
+          return http_msg;
         }
       }
     }
@@ -355,7 +378,7 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
     curr = curr->next;
   }
 
-  free(http_buf);
+  free(buf);
   return NULL;
 }
 
@@ -410,7 +433,7 @@ void process_tcp_packet(packet_node_t* packet_node) {
   if (len <= data_offset) {
     // if connection closing, just free the stream
     if (fin_flag || rst_flag) {
-      remove_tcp_stream(stream);
+      destroy_tcp_stream(stream);
     }
     return;
   }
@@ -431,8 +454,8 @@ void process_tcp_packet(packet_node_t* packet_node) {
     packet_node->proto = HTTP;
   }
 
-  // payload has been processed, safe to free the stream
+  // payload has been processed, safe to free the stream if closing
   if (fin_flag || rst_flag) {
-    free_tcp_stream(stream);
+    destroy_tcp_stream(stream);
   }
 }
