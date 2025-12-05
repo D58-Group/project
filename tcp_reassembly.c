@@ -151,7 +151,6 @@ tcp_stream_t* init_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
   stream->dest_port = dest_port;
 
   stream->init_seq = init_seq;
-  stream->next_seq = init_seq;
   stream->http_buf = NULL;
   stream->http_buf_len = 0;
   stream->segments = NULL;

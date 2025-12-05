@@ -3,6 +3,7 @@
 
 #include <pcap.h>
 #include <stdint.h>
+
 #include "sr_protocol.h"
 #include "sr_utils.h"
 
@@ -24,7 +25,6 @@ struct tcp_stream {
   // reassembly info
   tcp_segment_t* segments;  // linked list of segments
   uint32_t init_seq;        // initial sequence number
-  uint32_t next_seq;        // next expected sequence number
   uint8_t* http_buf;        // reassembled HTTP data
   uint32_t http_buf_len;    // length of reassembled HTTP data
   struct tcp_stream* next;
@@ -33,29 +33,29 @@ struct tcp_stream {
 struct http_message {
   uint8_t* header;
   uint32_t header_len;
-  uint8_t* data;            
-  uint32_t data_len;             
+  uint8_t* data;
+  uint32_t data_len;
 } typedef http_message_t;
 
 struct packet_node {
-  uint8_t *packet;
-  struct pcap_pkthdr hdr;      
-  struct packet_node *prev;
-  struct packet_node *next;
+  uint8_t* packet;
+  struct pcap_pkthdr hdr;
+  struct packet_node* prev;
+  struct packet_node* next;
 
-  unsigned int number;         
-  double time_rel;             
+  unsigned int number;
+  double time_rel;
 
-  uint32_t src_ip;             
+  uint32_t src_ip;
   uint32_t dst_ip;
-  enum protocol proto;  
-  
+  enum protocol proto;
+
   unsigned char ar_sha[ETHER_ADDR_LEN];
   unsigned char ar_tha[ETHER_ADDR_LEN];
 
-  uint32_t length;             
-  
-  char *info; 
+  uint32_t length;
+
+  char* info;
 
   // optional
   http_message_t* http_msg;
