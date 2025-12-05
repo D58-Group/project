@@ -39,34 +39,34 @@ int is_http_response(uint8_t* data, uint32_t len) {
 }
 
 void print_tcp_stream(tcp_stream_t* stream) {
-  fprintf(stderr, "-------------\n");
-  fprintf(stderr, "TCP Stream:\n");
-  fprintf(stderr, "From: \n");
+  fprintf(stdout, "-------------\n");
+  fprintf(stdout, "TCP Stream:\n");
+  fprintf(stdout, "From: \n");
   print_addr_ip_int(stream->src_ip);
-  fprintf(stderr, "Port %u\n", stream->src_port);
-  fprintf(stderr, "To: \n");
+  fprintf(stdout, "Port %u\n", stream->src_port);
+  fprintf(stdout, "To: \n");
   print_addr_ip_int(stream->dest_ip);
-  fprintf(stderr, "Port %u\n", stream->dest_port);
+  fprintf(stdout, "Port %u\n", stream->dest_port);
 
   tcp_segment_t* segment = stream->segments;
   while (segment != NULL) {
-    fprintf(stderr, "Segment:\n");
-    fprintf(stderr, "\tID: %u\n", segment->id);
-    fprintf(stderr, "\tSeq: %u\n", segment->seq);
-    fprintf(stderr, "\tRel Seq: %u\n", segment->seq - stream->init_seq);
-    fprintf(stderr, "\tLen: %u\n", segment->len);
-    fprintf(stderr, "-------------\n");
+    fprintf(stdout, "Segment:\n");
+    fprintf(stdout, "\tID: %u\n", segment->id);
+    fprintf(stdout, "\tSeq: %u\n", segment->seq);
+    fprintf(stdout, "\tRel Seq: %u\n", segment->seq - stream->init_seq);
+    fprintf(stdout, "\tLen: %u\n", segment->len);
+    fprintf(stdout, "-------------\n");
 
     if (segment->len > 0 && segment->data != NULL) {
       for (uint32_t i = 0; i < segment->len; i++) {
         char c = segment->data[i];
         if (c >= 32 && c <= 126) {  // printable characters
-          fprintf(stderr, "%c", c);
+          fprintf(stdout, "%c", c);
         } else {
-          fprintf(stderr, ".");
+          fprintf(stdout, ".");
         }
       }
-      fprintf(stderr, "\n");
+      fprintf(stdout, "\n");
     }
     segment = segment->next;
   }
@@ -80,14 +80,14 @@ char* tcp_stream_to_str(tcp_stream_t* stream) {
   if (!mem) return NULL;
 
   // redirects prints
-  FILE* saved = stderr;
-  stderr = mem;
+  FILE* saved = stdout;
+  stdout = mem;
 
   print_tcp_stream(stream);
 
   // put it back
   fflush(mem);
-  stderr = saved;
+  stdout = saved;
   fclose(mem);
 
   return output;

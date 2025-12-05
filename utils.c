@@ -33,42 +33,42 @@ void print_addr_eth(uint8_t* addr) {
   uint8_t cur;
   for (; pos < ETHER_ADDR_LEN; pos++) {
     cur = addr[pos];
-    if (pos > 0) fprintf(stderr, ":");
-    fprintf(stderr, "%02X", cur);
+    if (pos > 0) fprintf(stdout, ":");
+    fprintf(stdout, "%02X", cur);
   }
-  fprintf(stderr, "\n");
+  fprintf(stdout, "\n");
 }
 
 /* Prints out IP address as a string from in_addr */
 void print_addr_ip(struct in_addr address) {
   char buf[INET_ADDRSTRLEN];
   if (inet_ntop(AF_INET, &address, buf, 100) == NULL)
-    fprintf(stderr, "inet_ntop error on address conversion\n");
+    fprintf(stdout, "inet_ntop error on address conversion\n");
   else
-    fprintf(stderr, "%s\n", buf);
+    fprintf(stdout, "%s\n", buf);
 }
 
 /* Prints out IP address from integer value */
 void print_addr_ip_int(uint32_t ip) {
   uint32_t curOctet = ip >> 24;
-  fprintf(stderr, "%d.", curOctet);
+  fprintf(stdout, "%d.", curOctet);
   curOctet = (ip << 8) >> 24;
-  fprintf(stderr, "%d.", curOctet);
+  fprintf(stdout, "%d.", curOctet);
   curOctet = (ip << 16) >> 24;
-  fprintf(stderr, "%d.", curOctet);
+  fprintf(stdout, "%d.", curOctet);
   curOctet = (ip << 24) >> 24;
-  fprintf(stderr, "%d\n", curOctet);
+  fprintf(stdout, "%d\n", curOctet);
 }
 
 /* Prints out fields in Ethernet header. */
 void print_hdr_eth(uint8_t* buf) {
   ethernet_hdr_t* ehdr = (ethernet_hdr_t*)buf;
-  fprintf(stderr, "ETHERNET header:\n");
-  fprintf(stderr, "\tdestination: ");
+  fprintf(stdout, "ETHERNET header:\n");
+  fprintf(stdout, "\tdestination: ");
   print_addr_eth(ehdr->ether_dhost);
-  fprintf(stderr, "\tsource: ");
+  fprintf(stdout, "\tsource: ");
   print_addr_eth(ehdr->ether_shost);
-  fprintf(stderr, "\ttype: %d\n", ntohs(ehdr->ether_type));
+  fprintf(stdout, "\ttype: %d\n", ntohs(ehdr->ether_type));
 }
 
 /* Prints out fields in IP header. */
@@ -103,40 +103,40 @@ void print_hdr_ip(uint8_t* buf) {
       break;
   }
 
-  fprintf(stderr, "IP header:\n");
-  fprintf(stderr, "\tversion: %d\n", iphdr->ip_v);
-  fprintf(stderr, "\theader length (words): %d\n", ihl_words);
-  fprintf(stderr, "\theader length (bytes): %u\n", (unsigned)header_bytes);
-  fprintf(stderr, "\tDSCP: %u\n", dscp);
-  fprintf(stderr, "\tECN: %u\n", ecn);
-  fprintf(stderr, "\ttotal length: %u\n", (unsigned)total_len);
-  fprintf(stderr, "\tpayload length: %u\n", (unsigned)payload_bytes);
-  fprintf(stderr, "\tid: %u\n", (unsigned)ntohs(iphdr->ip_id));
+  fprintf(stdout, "IP header:\n");
+  fprintf(stdout, "\tversion: %d\n", iphdr->ip_v);
+  fprintf(stdout, "\theader length (words): %d\n", ihl_words);
+  fprintf(stdout, "\theader length (bytes): %u\n", (unsigned)header_bytes);
+  fprintf(stdout, "\tDSCP: %u\n", dscp);
+  fprintf(stdout, "\tECN: %u\n", ecn);
+  fprintf(stdout, "\ttotal length: %u\n", (unsigned)total_len);
+  fprintf(stdout, "\tpayload length: %u\n", (unsigned)payload_bytes);
+  fprintf(stdout, "\tid: %u\n", (unsigned)ntohs(iphdr->ip_id));
 
-  fprintf(stderr, "\tflags: R=%d, DF=%d, MF=%d\n", flag_reserved, flag_df,
+  fprintf(stdout, "\tflags: R=%d, DF=%d, MF=%d\n", flag_reserved, flag_df,
           flag_mf);
-  fprintf(stderr, "\tfragment offset: %u\n", (unsigned)frag_off);
-  fprintf(stderr, "\tTTL: %u\n", (unsigned)iphdr->ip_ttl);
-  fprintf(stderr, "\tprotocol: %u (%s)\n", (unsigned)iphdr->ip_p, proto_name);
+  fprintf(stdout, "\tfragment offset: %u\n", (unsigned)frag_off);
+  fprintf(stdout, "\tTTL: %u\n", (unsigned)iphdr->ip_ttl);
+  fprintf(stdout, "\tprotocol: %u (%s)\n", (unsigned)iphdr->ip_p, proto_name);
 
   /* Keep checksum in NBO, but show as hex */
-  fprintf(stderr, "\tchecksum: 0x%04x\n", ntohs(iphdr->ip_sum));
+  fprintf(stdout, "\tchecksum: 0x%04x\n", ntohs(iphdr->ip_sum));
 
-  fprintf(stderr, "\tsource: ");
+  fprintf(stdout, "\tsource: ");
   print_addr_ip_int(ntohl(iphdr->ip_src));
 
-  fprintf(stderr, "\tdestination: ");
+  fprintf(stdout, "\tdestination: ");
   print_addr_ip_int(ntohl(iphdr->ip_dst));
 }
 
 /* Prints out ICMP header fields */
 void print_hdr_icmp(uint8_t* buf) {
   icmp_hdr_t* icmp_hdr = (icmp_hdr_t*)(buf);
-  fprintf(stderr, "ICMP header:\n");
-  fprintf(stderr, "\ttype: %d\n", icmp_hdr->icmp_type);
-  fprintf(stderr, "\tcode: %d\n", icmp_hdr->icmp_code);
+  fprintf(stdout, "ICMP header:\n");
+  fprintf(stdout, "\ttype: %d\n", icmp_hdr->icmp_type);
+  fprintf(stdout, "\tcode: %d\n", icmp_hdr->icmp_code);
   /* Keep checksum in NBO */
-  fprintf(stderr, "\tchecksum: %d\n", icmp_hdr->icmp_sum);
+  fprintf(stdout, "\tchecksum: %d\n", icmp_hdr->icmp_sum);
 
   // if (icmp_hdr->type == icmp_type_3) {
   //   fr
@@ -145,13 +145,13 @@ void print_hdr_icmp(uint8_t* buf) {
 
 void print_hdr_udp(uint8_t* buf) {
   udp_hdr_t* udp_hdr = (udp_hdr_t*)(buf);
-  fprintf(stderr, "UDP header:\n");
+  fprintf(stdout, "UDP header:\n");
   // host order
-  fprintf(stderr, "\tsrc: %u\n", (unsigned)ntohs(udp_hdr->udp_src));
-  fprintf(stderr, "\tdst: %u\n", (unsigned)ntohs(udp_hdr->udp_dst));
-  fprintf(stderr, "\tlen: %u\n", (unsigned)ntohs(udp_hdr->udp_len));
+  fprintf(stdout, "\tsrc: %u\n", (unsigned)ntohs(udp_hdr->udp_src));
+  fprintf(stdout, "\tdst: %u\n", (unsigned)ntohs(udp_hdr->udp_dst));
+  fprintf(stdout, "\tlen: %u\n", (unsigned)ntohs(udp_hdr->udp_len));
   // NBO-hex
-  fprintf(stderr, "\tchecksum: 0x%04x\n", ntohs(udp_hdr->udp_sum));
+  fprintf(stdout, "\tchecksum: 0x%04x\n", ntohs(udp_hdr->udp_sum));
 }
 
 void print_hdr_tcp(uint8_t* buf) {
@@ -160,65 +160,65 @@ void print_hdr_tcp(uint8_t* buf) {
   uint8_t data_offset = (tcp_hdr->tcp_off >> 4);
   uint8_t flags = tcp_hdr->tcp_flags;
 
-  fprintf(stderr, "TCP header:\n");
-  fprintf(stderr, "\tsrc: %u\n", (unsigned)ntohs(tcp_hdr->tcp_src));
-  fprintf(stderr, "\tdst: %u\n", (unsigned)ntohs(tcp_hdr->tcp_dst));
-  fprintf(stderr, "\tseq: %u\n", (unsigned)ntohl(tcp_hdr->tcp_seq));
-  fprintf(stderr, "\tack: %u\n", (unsigned)ntohl(tcp_hdr->tcp_ack));
-  fprintf(stderr, "\toffset (words): %u\n", (unsigned)data_offset);
-  fprintf(stderr, "\toffset (bytes): %u\n", (unsigned)(data_offset * 4));
+  fprintf(stdout, "TCP header:\n");
+  fprintf(stdout, "\tsrc: %u\n", (unsigned)ntohs(tcp_hdr->tcp_src));
+  fprintf(stdout, "\tdst: %u\n", (unsigned)ntohs(tcp_hdr->tcp_dst));
+  fprintf(stdout, "\tseq: %u\n", (unsigned)ntohl(tcp_hdr->tcp_seq));
+  fprintf(stdout, "\tack: %u\n", (unsigned)ntohl(tcp_hdr->tcp_ack));
+  fprintf(stdout, "\toffset (words): %u\n", (unsigned)data_offset);
+  fprintf(stdout, "\toffset (bytes): %u\n", (unsigned)(data_offset * 4));
 
-  fprintf(stderr, "\tflags: 0x%02x (", flags);
+  fprintf(stdout, "\tflags: 0x%02x (", flags);
   int first = 1;
   if (flags & 0x01) {
-    fprintf(stderr, "%sFIN", first ? "" : "|");
+    fprintf(stdout, "%sFIN", first ? "" : "|");
     first = 0;
   }
   if (flags & 0x02) {
-    fprintf(stderr, "%sSYN", first ? "" : "|");
+    fprintf(stdout, "%sSYN", first ? "" : "|");
     first = 0;
   }
   if (flags & 0x04) {
-    fprintf(stderr, "%sRST", first ? "" : "|");
+    fprintf(stdout, "%sRST", first ? "" : "|");
     first = 0;
   }
   if (flags & 0x08) {
-    fprintf(stderr, "%sPSH", first ? "" : "|");
+    fprintf(stdout, "%sPSH", first ? "" : "|");
     first = 0;
   }
   if (flags & 0x10) {
-    fprintf(stderr, "%sACK", first ? "" : "|");
+    fprintf(stdout, "%sACK", first ? "" : "|");
     first = 0;
   }
   if (flags & 0x20) {
-    fprintf(stderr, "%sURG", first ? "" : "|");
+    fprintf(stdout, "%sURG", first ? "" : "|");
     first = 0;
   }
-  if (first) fprintf(stderr, "none");
-  fprintf(stderr, ")\n");
+  if (first) fprintf(stdout, "none");
+  fprintf(stdout, ")\n");
 
-  fprintf(stderr, "\twindow: %u\n", (unsigned)ntohs(tcp_hdr->tcp_win));
-  fprintf(stderr, "\tchecksum: 0x%04x\n", ntohs(tcp_hdr->tcp_sum));
-  fprintf(stderr, "\turgptr: %u\n", (unsigned)ntohs(tcp_hdr->tcp_urp));
+  fprintf(stdout, "\twindow: %u\n", (unsigned)ntohs(tcp_hdr->tcp_win));
+  fprintf(stdout, "\tchecksum: 0x%04x\n", ntohs(tcp_hdr->tcp_sum));
+  fprintf(stdout, "\turgptr: %u\n", (unsigned)ntohs(tcp_hdr->tcp_urp));
 }
 
 void print_hdr_arp(uint8_t* buf) {
   arp_hdr_t* arp_hdr = (arp_hdr_t*)(buf);
-  fprintf(stderr, "ARP header\n");
-  fprintf(stderr, "\thardware type: %d\n", ntohs(arp_hdr->ar_hrd));
-  fprintf(stderr, "\tprotocol type: %d\n", ntohs(arp_hdr->ar_pro));
-  fprintf(stderr, "\thardware address length: %d\n", arp_hdr->ar_hln);
-  fprintf(stderr, "\tprotocol address length: %d\n", arp_hdr->ar_pln);
-  fprintf(stderr, "\topcode: %d\n", ntohs(arp_hdr->ar_op));
+  fprintf(stdout, "ARP header\n");
+  fprintf(stdout, "\thardware type: %d\n", ntohs(arp_hdr->ar_hrd));
+  fprintf(stdout, "\tprotocol type: %d\n", ntohs(arp_hdr->ar_pro));
+  fprintf(stdout, "\thardware address length: %d\n", arp_hdr->ar_hln);
+  fprintf(stdout, "\tprotocol address length: %d\n", arp_hdr->ar_pln);
+  fprintf(stdout, "\topcode: %d\n", ntohs(arp_hdr->ar_op));
 
-  fprintf(stderr, "\tsender hardware address: ");
+  fprintf(stdout, "\tsender hardware address: ");
   print_addr_eth(arp_hdr->ar_sha);
-  fprintf(stderr, "\tsender ip address: ");
+  fprintf(stdout, "\tsender ip address: ");
   print_addr_ip_int(ntohl(arp_hdr->ar_sip));
 
-  fprintf(stderr, "\ttarget hardware address: ");
+  fprintf(stdout, "\ttarget hardware address: ");
   print_addr_eth(arp_hdr->ar_tha);
-  fprintf(stderr, "\ttarget ip address: ");
+  fprintf(stdout, "\ttarget ip address: ");
   print_addr_ip_int(ntohl(arp_hdr->ar_tip));
 
   /* extra Wireshark-style summary */
@@ -231,9 +231,9 @@ void print_hdr_arp(uint8_t* buf) {
 
   uint16_t op = ntohs(arp_hdr->ar_op);
   if (op == arp_op_request) {
-    fprintf(stderr, "\t[who has %s? tell %s]\n", tip, sip);
+    fprintf(stdout, "\t[who has %s? tell %s]\n", tip, sip);
   } else if (op == arp_op_reply) {
-    fprintf(stderr, "\t[%s is-at ", sip);
+    fprintf(stdout, "\t[%s is-at ", sip);
     print_addr_eth(arp_hdr->ar_sha); /* this already prints newline */
   }
 }
@@ -243,7 +243,7 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
   /* Ethernet */
   int minlength = sizeof(ethernet_hdr_t);
   if (length < minlength) {
-    fprintf(stderr, "Failed to print ETHERNET header, insufficient length\n");
+    fprintf(stdout, "Failed to print ETHERNET header, insufficient length\n");
     return;
   }
 
@@ -253,7 +253,7 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
   if (ethtype == ethertype_ip) { /* IP */
     minlength += sizeof(ip_hdr_t);
     if (length < minlength) {
-      fprintf(stderr, "Failed to print IP header, insufficient length\n");
+      fprintf(stdout, "Failed to print IP header, insufficient length\n");
       return;
     }
 
@@ -263,19 +263,19 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
     if (ip_proto == ip_protocol_icmp) { /* ICMP */
       minlength += sizeof(icmp_hdr_t);
       if (length < minlength)
-        fprintf(stderr, "Failed to print ICMP header, insufficient length\n");
+        fprintf(stdout, "Failed to print ICMP header, insufficient length\n");
       else
         print_hdr_icmp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
     } else if (ip_proto == ip_protocol_udp) { /* UDP */
       minlength += sizeof(udp_hdr_t);
       if (length < minlength)
-        fprintf(stderr, "Failed to print UDP header, insufficient length\n");
+        fprintf(stdout, "Failed to print UDP header, insufficient length\n");
       else
         print_hdr_udp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
     } else if (ip_proto == ip_protocol_tcp) { /* TCP */
       minlength += sizeof(tcp_hdr_t);
       if (length < minlength)
-        fprintf(stderr, "Failed to print TCP header, insufficient length\n");
+        fprintf(stdout, "Failed to print TCP header, insufficient length\n");
       else {
         print_hdr_tcp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
         // tcp_hdr_t *tcp_hdr = (tcp_hdr_t *)(buf +
@@ -283,18 +283,18 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
         // = tcp_hdr->tcp_off >> 4;  /* get data offset (last 4 bytes are
         // reserved) */ int tcp_header_length = tcp_data_offset * 4; if (length
         // > sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) +
-        // tcp_header_length) { fprintf(stderr, "\tTCP payload\n"); size_t
+        // tcp_header_length) { fprintf(stdout, "\tTCP payload\n"); size_t
         // payload_len =
         //   length - tcp_header_length - sizeof(ethernet_hdr_t) -
         //   sizeof(ip_hdr_t);
 
-        // fprintf(stderr, "\tHeader length: %d\n", tcp_header_length);
-        // fprintf(stderr, "\tPayload length: %zu\n", payload_len);
+        // fprintf(stdout, "\tHeader length: %d\n", tcp_header_length);
+        // fprintf(stdout, "\tPayload length: %zu\n", payload_len);
 
         // fwrite(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) +
         // tcp_header_length,
-        //   1, payload_len, stderr);
-        // fwrite("\n", 1, 1, stderr);
+        //   1, payload_len, stdout);
+        // fwrite("\n", 1, 1, stdout);
         // }
       }
     }
@@ -303,11 +303,11 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
   else if (ethtype == ethertype_arp) { /* ARP */
     minlength += sizeof(arp_hdr_t);
     if (length < minlength)
-      fprintf(stderr, "Failed to print ARP header, insufficient length\n");
+      fprintf(stdout, "Failed to print ARP header, insufficient length\n");
     else
       print_hdr_arp(buf + sizeof(ethernet_hdr_t));
   } else {
-    fprintf(stderr, "Unrecognized Ethernet Type: %d\n", ethtype);
+    fprintf(stdout, "Unrecognized Ethernet Type: %d\n", ethtype);
   }
 }
 
@@ -391,21 +391,21 @@ char* format_hdrs_to_string(uint8_t* buf, uint32_t length) {
   if (!mem) return NULL;
 
   // redirects prints
-  FILE* saved = stderr;
-  stderr = mem;
+  FILE* saved = stdout;
+  stdout = mem;
 
   print_hdrs(buf, length);
 
   // put it back
   fflush(mem);
-  stderr = saved;
+  stdout = saved;
   fclose(mem);
 
   return output;
 }
 
 void print_http_hdr(uint8_t* buf, uint32_t length) {
-  fwrite(buf, 1, length, stderr);
+  fwrite(buf, 1, length, stdout);
 }
 
 char* http_hdr_to_str(uint8_t* buf, uint32_t length) {
@@ -416,14 +416,14 @@ char* http_hdr_to_str(uint8_t* buf, uint32_t length) {
   if (!mem) return NULL;
 
   // redirects prints
-  FILE* saved = stderr;
-  stderr = mem;
+  FILE* saved = stdout;
+  stdout = mem;
 
   print_http_hdr(buf, length);
 
   // put it back
   fflush(mem);
-  stderr = saved;
+  stdout = saved;
   fclose(mem);
 
   return output;
