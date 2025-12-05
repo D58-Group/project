@@ -12,6 +12,7 @@ struct http_message {
   uint32_t header_len;
   uint8_t* data;
   uint32_t data_len;
+  int segment_count;
 } typedef http_message_t;
 
 struct packet_node {

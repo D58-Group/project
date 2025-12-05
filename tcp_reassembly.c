@@ -98,7 +98,8 @@ char* tcp_stream_to_str(tcp_stream_t* stream) {
 /* TCP STREAM MANAGEMENT */
 
 http_message_t* create_http_message(uint8_t* header, uint32_t header_len,
-                                    uint8_t* data, uint32_t data_len) {
+                                    uint8_t* data, uint32_t data_len,
+                                    uint8_t segment_count) {
   http_message_t* http_msg = malloc(sizeof(http_message_t));
   if (!http_msg) {
     return NULL;
@@ -128,6 +129,7 @@ http_message_t* create_http_message(uint8_t* header, uint32_t header_len,
     http_msg->data_len = 0;
   }
 
+  http_msg->segment_count = segment_count;
   return http_msg;
 }
 
@@ -371,8 +373,8 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
             // should be equal but just in case
             if (buf_len >= http_data_len) {
               // create http message
-              http_message_t* http_msg =
-                  create_http_message(buf, hdr_end, buf + hdr_end, content_len);
+              http_message_t* http_msg = create_http_message(
+                  buf, hdr_end, buf + hdr_end, content_len, segment_count);
               if (!http_msg) {
                 free(buf);
                 return NULL;
@@ -385,7 +387,8 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
           }
         } else {
           // no content-length, assume header only
-          http_message_t* http_msg = create_http_message(buf, hdr_end, NULL, 0);
+          http_message_t* http_msg =
+              create_http_message(buf, hdr_end, NULL, 0, segment_count);
           if (!http_msg) {
             free(buf);
             return NULL;

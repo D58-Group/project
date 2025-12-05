@@ -278,24 +278,6 @@ void print_hdrs(uint8_t* buf, uint32_t length) {
         fprintf(stdout, "Failed to print TCP header, insufficient length\n");
       else {
         print_hdr_tcp(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t));
-        // tcp_hdr_t *tcp_hdr = (tcp_hdr_t *)(buf +
-        // sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t)); int tcp_data_offset
-        // = tcp_hdr->tcp_off >> 4;  /* get data offset (last 4 bytes are
-        // reserved) */ int tcp_header_length = tcp_data_offset * 4; if (length
-        // > sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) +
-        // tcp_header_length) { fprintf(stdout, "\tTCP payload\n"); size_t
-        // payload_len =
-        //   length - tcp_header_length - sizeof(ethernet_hdr_t) -
-        //   sizeof(ip_hdr_t);
-
-        // fprintf(stdout, "\tHeader length: %d\n", tcp_header_length);
-        // fprintf(stdout, "\tPayload length: %zu\n", payload_len);
-
-        // fwrite(buf + sizeof(ethernet_hdr_t) + sizeof(ip_hdr_t) +
-        // tcp_header_length,
-        //   1, payload_len, stdout);
-        // fwrite("\n", 1, 1, stdout);
-        // }
       }
     }
   }
@@ -408,7 +390,7 @@ void print_http_hdr(uint8_t* buf, uint32_t length) {
   fwrite(buf, 1, length, stdout);
 }
 
-char* http_hdr_to_str(uint8_t* buf, uint32_t length) {
+char* http_hdr_to_str(http_message_t* http_msg) {
   char* output = NULL;
   size_t out_size = 0;
 
@@ -419,7 +401,7 @@ char* http_hdr_to_str(uint8_t* buf, uint32_t length) {
   FILE* saved = stdout;
   stdout = mem;
 
-  print_http_hdr(buf, length);
+  print_http_hdr(http_msg->header, http_msg->header_len);
 
   // put it back
   fflush(mem);

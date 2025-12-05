@@ -976,12 +976,18 @@ void display_header_info() {
   }
 
   if (node->proto == HTTP && node->http_msg != NULL) {
+    if (node->http_msg->segment_count > 1) {
+      mvwprintw(info_pad, line_count, 0, "[%d Reassembled TCP segments]",
+                node->http_msg->segment_count);
+      line_count += 1;
+      max_info_lines += 1;
+    }
+
     mvwprintw(info_pad, line_count, 0, "%s", "HTTP header:");
     line_count += 1;
     max_info_lines += 1;
 
-    char* http_info =
-        http_hdr_to_str(node->http_msg->header, node->http_msg->header_len);
+    char* http_info = http_hdr_to_str(node->http_msg);
     if (http_info != NULL) {
       int http_info_len = strlen(http_info);
       sprintf(buf, "\t%s", "");

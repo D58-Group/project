@@ -6,7 +6,8 @@
 #include "packet_sniffer.h"
 
 http_message_t* create_http_message(uint8_t* header, uint32_t header_len,
-                                    uint8_t* data, uint32_t data_len);
+                                    uint8_t* data, uint32_t data_len,
+                                    uint8_t segment_count);
 void free_http_message(http_message_t* http_msg);
 
 tcp_stream_t* init_tcp_stream(uint32_t src_ip, uint32_t dest_ip,

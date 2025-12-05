@@ -1,8 +1,10 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include <stdint.h>
 #include <arpa/inet.h>
+#include <stdint.h>
+
+#include "packet_sniffer.h"
 
 uint16_t cksum(const void* _data, int len);
 
@@ -30,6 +32,6 @@ void convert_addr_ip_int_to_str(uint32_t ip, char* str_addr);
 void get_source_dest(char* src, char* dst, const uint8_t* packet);
 // used to put the print_hdrs output in a string
 char* format_hdrs_to_string(uint8_t* buf, uint32_t length);
-char* http_hdr_to_str(uint8_t* buf, uint32_t length);
+char* http_hdr_to_str(http_message_t* http_msg);
 
 #endif /* -- UTILS_H -- */
