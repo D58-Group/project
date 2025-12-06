@@ -6,6 +6,8 @@
 # prerequisites
 sudo apt-get install libpcap-dev
 sudo apt-get install libncurses-dev
+sudo apt install gnuplot gnuplot-x11 libcairo2
+
 
 # compile
 make
