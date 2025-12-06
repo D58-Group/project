@@ -99,7 +99,8 @@ char* tcp_stream_to_str(tcp_stream_t* stream) {
 
 http_message_t* create_http_message(uint8_t* header, uint32_t header_len,
                                     uint8_t* data, uint32_t data_len,
-                                    uint8_t segment_count) {
+                                    tcp_segment_t* segments,
+                                    int segment_count) {
   http_message_t* http_msg = malloc(sizeof(http_message_t));
   if (!http_msg) {
     return NULL;
@@ -129,20 +130,20 @@ http_message_t* create_http_message(uint8_t* header, uint32_t header_len,
     http_msg->data_len = 0;
   }
 
+  http_msg->segments = segments;
   http_msg->segment_count = segment_count;
   return http_msg;
 }
 
 void free_http_message(http_message_t* http_msg) {
-  if (http_msg) {
-    if (http_msg->header) {
-      free(http_msg->header);
-    }
-    if (http_msg->data) {
-      free(http_msg->data);
-    }
-    free(http_msg);
+  if (http_msg->header) {
+    free(http_msg->header);
   }
+  if (http_msg->data) {
+    free(http_msg->data);
+  }
+  free_tcp_segments(http_msg->segments);
+  free(http_msg);
 }
 
 tcp_stream_t* init_tcp_stream(uint32_t src_ip, uint32_t dest_ip,
@@ -262,6 +263,26 @@ void destroy_tcp_stream(tcp_stream_t* stream) {
   }
 }
 
+tcp_segment_t* remove_first_n_tcp_segments(tcp_stream_t* stream, int n) {
+  tcp_segment_t* head = stream->segments;
+
+  int i = 0;
+  tcp_segment_t* prev = NULL;
+  tcp_segment_t* curr = stream->segments;
+  while (i < n && curr != NULL) {
+    prev = curr;
+    curr = curr->next;
+    i++;
+  }
+
+  if (prev != NULL) {
+    prev->next = NULL;
+  }
+
+  stream->segments = curr;
+  return head;
+}
+
 void destroy_first_n_tcp_segments(tcp_stream_t* stream, int n) {
   tcp_segment_t* curr = stream->segments;
   tcp_segment_t* prev = NULL;
@@ -275,6 +296,15 @@ void destroy_first_n_tcp_segments(tcp_stream_t* stream, int n) {
     count++;
   }
   stream->segments = curr;
+}
+
+void free_tcp_segments(tcp_segment_t* segment) {
+  while (segment != NULL) {
+    tcp_segment_t* next = segment->next;
+    free(segment->data);
+    free(segment);
+    segment = next;
+  }
 }
 
 void free_tcp_stream(tcp_stream_t* stream) {
@@ -372,23 +402,30 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
 
             // should be equal but just in case
             if (buf_len >= http_data_len) {
+              // removed used segments from stream
+              tcp_segment_t* segments =
+                  remove_first_n_tcp_segments(stream, segment_count);
+
               // create http message
-              http_message_t* http_msg = create_http_message(
-                  buf, hdr_end, buf + hdr_end, content_len, segment_count);
+              http_message_t* http_msg =
+                  create_http_message(buf, hdr_end, buf + hdr_end, content_len,
+                                      segments, segment_count);
+
               if (!http_msg) {
                 free(buf);
                 return NULL;
               }
-              // remove used segments from stream
-              destroy_first_n_tcp_segments(stream, segment_count);
+
               free(buf);
               return http_msg;
             }
           }
         } else {
           // no content-length, assume header only
-          http_message_t* http_msg =
-              create_http_message(buf, hdr_end, NULL, 0, segment_count);
+          tcp_segment_t* segments =
+              remove_first_n_tcp_segments(stream, segment_count);
+          http_message_t* http_msg = create_http_message(
+              buf, hdr_end, NULL, 0, segments, segment_count);
           if (!http_msg) {
             free(buf);
             return NULL;

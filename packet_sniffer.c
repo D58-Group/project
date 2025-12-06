@@ -977,10 +977,20 @@ void display_header_info() {
 
   if (node->proto == HTTP && node->http_msg != NULL) {
     if (node->http_msg->segment_count > 1) {
-      mvwprintw(info_pad, line_count, 0, "[%d Reassembled TCP segments]",
-                node->http_msg->segment_count);
+      mvwprintw(info_pad, line_count, 0,
+                "[%d Reassembled TCP segments (%u bytes)]",
+                node->http_msg->segment_count,
+                node->http_msg->header_len + node->http_msg->data_len);
       line_count += 1;
       max_info_lines += 1;
+      tcp_segment_t* segment = node->http_msg->segments;
+      while (segment != NULL) {
+        mvwprintw(info_pad, line_count, 0, "\tFrame %u (Payload: %u bytes)",
+                  segment->id, segment->len);
+        segment = segment->next;
+        line_count += 1;
+        max_info_lines += 1;
+      }
     }
 
     mvwprintw(info_pad, line_count, 0, "%s", "HTTP header:");
