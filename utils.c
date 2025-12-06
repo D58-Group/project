@@ -68,7 +68,14 @@ void print_hdr_eth(uint8_t* buf) {
   print_addr_eth(ehdr->ether_dhost);
   printf("\tsource: ");
   print_addr_eth(ehdr->ether_shost);
-  printf("\ttype: %d\n", ntohs(ehdr->ether_type));
+  uint16_t ether_type = ntohs(ehdr->ether_type);
+  if (ether_type == ethertype_ip)
+    printf("\ttype: IP (%d)\n", ether_type);
+  else if (ether_type == ethertype_arp)
+    printf("\ttype: ARP (%d)\n", ether_type);
+  else {
+    printf("\ttype: UNKNOWN (%d)\n", ether_type);
+  }
 }
 
 /* Prints out fields in IP header. */
