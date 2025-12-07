@@ -709,6 +709,16 @@ static void ts_update(double t_rel, const uint8_t* packet,
   pthread_mutex_unlock(&ts_lock);
 }
 
+void free_ts_bin_list() {
+  ts_bin_t* node = ts_head;
+  ts_bin_t* next = NULL;
+  while(node != NULL) {
+    next = node->next;
+    free(node);
+    node = next;
+  }
+}
+
 void refresh_stats_window() {
   wrefresh(stats);
   // mvwprintw(stats, 0, 0, "Packets: %d", total_pkts);
@@ -782,15 +792,25 @@ void close_program() {
     delete_packet_nodes(packet_list);
   }
 
+  // Close pcap capturing
+  if (packet_capture_handle != NULL) {
+    pcap_breakloop(packet_capture_handle);
+
+    pcap_close(packet_capture_handle);
+  }
+
+  // Free tcp streams
+  free_all_tcp_streams();
+
+  // Free timestamp list
+  free_ts_bin_list();
+
   // Exit key event thread
   pthread_cancel(key_event_thread);
   pthread_join(key_event_thread, NULL);
 
   // Close ncurses window
   delete_windows();
-
-  // Close session
-  pcap_close(packet_capture_handle);
 
   if (exceeded_max_rows) {
     printf("Reached maximum number of packets %d\n", MAX_ROWS);
@@ -1267,11 +1287,6 @@ int main(int argc, char* argv[]) {
       pcap_loop(packet_capture_handle, -1, handle_packet, (uint8_t*)&options);
   printf("pcap_loop returned with code %d\n", rc);
 
-  // Close session
-  pcap_close(packet_capture_handle);
-
-  // Free device list
-  pcap_freealldevs(devices);
-  free_all_tcp_streams();
+  close_program();
   return 0;
 }
