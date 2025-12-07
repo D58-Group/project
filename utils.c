@@ -141,12 +141,33 @@ void print_hdr_icmp(uint8_t* buf) {
   printf("ICMP header:\n");
   printf("\ttype: %d\n", icmp_hdr->icmp_type);
   printf("\tcode: %d\n", icmp_hdr->icmp_code);
-  /* Keep checksum in NBO */
-  printf("\tchecksum: %d\n", icmp_hdr->icmp_sum);
+  /* Keep checksum in NBO, but show as hex */
+  printf("\tchecksum: 0x%04x\n", ntohs(icmp_hdr->icmp_sum));
 
-  // if (icmp_hdr->type == icmp_type_3) {
-  //   fr
-  // }
+  if (icmp_hdr->icmp_type == 0) {
+    printf("\t[Echo (Ping) Reply] \n");
+  } else if (icmp_hdr->icmp_type == 8) {
+    printf("\t[Echo (Ping) Request] \n");
+  } else if (icmp_hdr->icmp_type == 11 && icmp_hdr->icmp_code == 0) {
+    printf("\t[Time Exceeded] \n");
+  } else if (icmp_hdr->icmp_type == 3) {
+    icmp_t3_hdr_t *icmp_t3_hdr = (icmp_t3_hdr_t *)(buf);
+
+    // Print IP header of ICMP data
+    if (icmp_t3_hdr->icmp_type == 3 && icmp_t3_hdr->icmp_code == 0) {
+      printf("\t[Destination Net Unreachable] \n\n");
+      printf("IP header of ICMP Data: \n");
+      print_hdr_ip(icmp_t3_hdr->data);
+    } else if (icmp_t3_hdr->icmp_type == 3 && icmp_t3_hdr->icmp_code == 1) {
+      printf("\t[Destination Host Unreachable] \n\n");
+      printf("IP header of ICMP Data: \n");
+      print_hdr_ip(icmp_t3_hdr->data);
+    } else if (icmp_t3_hdr->icmp_type == 3 && icmp_t3_hdr->icmp_code == 3) {
+      printf("\t[Port Unreachable] \n\n");
+      printf("IP header of ICMP Data: \n");
+      print_hdr_ip(icmp_t3_hdr->data);
+    }
+  }
 }
 
 void print_hdr_udp(uint8_t* buf) {
