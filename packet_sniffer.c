@@ -970,7 +970,6 @@ void display_header_info() {
   current_info_line = 0;
   werase(info_pad);
   wrefresh(info_pad);
-  // mvwprintw(info_pad, 0, 0, "%s", node->info);
   char* info = node->info;
   int info_length = strlen(info);
   char buf[info_length + 1];
