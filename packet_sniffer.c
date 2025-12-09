@@ -85,10 +85,13 @@ int top_line = 0;
 int current_info_line = 0;
 int max_info_lines = 0;
 int exceeded_max_rows = 0;
+int start_timer = 0;
 uint64_t avg_bytes = 0;
+uint64_t avg_bytes_overall = 0;
 uint64_t previous_total_bytes = 0;
 pthread_t key_event_thread;
 pthread_t stats_thread;
+pthread_t overall_stats_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
 const int SOURCE_INDEX = 30;
@@ -686,7 +689,8 @@ void free_ts_bin_list() {
 void refresh_stats_window() {
   wrefresh(stats);
   werase(stats);
-  mvwprintw(stats, 0, 0, "Average Bytes/second: %ld", avg_bytes);
+  mvwprintw(stats, 0, 0, "Average Bytes/second: %ld", avg_bytes_overall);
+  mvwprintw(stats, 0, 50, "Bytes/second (in last 3 second interval): %ld", avg_bytes);
   mvwprintw(stats, 2, 0, "Packets");
   mvwprintw(stats, 2, 12, "IPv4");
   mvwprintw(stats, 2, 22, "ARP");
@@ -770,6 +774,10 @@ void close_program() {
   pthread_cancel(stats_thread);
   pthread_join(stats_thread, NULL);
 
+  // Exit overall stats thread
+  pthread_cancel(overall_stats_thread);
+  pthread_join(overall_stats_thread, NULL);
+
   // Close ncurses window
   delete_windows();
 
@@ -827,6 +835,7 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
     packet_list = new_node;
     last_node = new_node;
     first_ts_set = 1;
+    start_timer = 1;
   }
 
   if (get_packet_list_length(0, packet_list) >= MAX_ROWS) {
@@ -1154,14 +1163,24 @@ void* handle_key_event(void* arg) {
 }
 
 void* handle_stats_update(void* arg) {
-  int total_time = 0;
   int time_interval = 3;
   while (1) {
     sleep(time_interval);
-    total_time++;
     avg_bytes = (total_bytes - previous_total_bytes) / time_interval;
     previous_total_bytes = total_bytes;
     refresh_stats_window();
+  }
+}
+
+void* handle_overall_stats_update(void* arg) {
+  int total_time = 0;
+  while (1) {
+    sleep(1);
+    if (start_timer == 1) {
+      total_time++;
+      avg_bytes_overall = total_bytes / total_time;
+      refresh_stats_window();
+    }
   }
 }
 
@@ -1258,6 +1277,9 @@ int main(int argc, char* argv[]) {
 
   // Update average bytes stats
   pthread_create(&stats_thread, NULL, handle_stats_update, NULL);
+
+  // Update average bytes stats
+  pthread_create(&overall_stats_thread, NULL, handle_overall_stats_update, NULL);
 
   // Setup windows
   initialize_windows();
