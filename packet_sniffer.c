@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "sorting.h"
 #include "tcp_reassembly.h"
@@ -84,7 +85,10 @@ int top_line = 0;
 int current_info_line = 0;
 int max_info_lines = 0;
 int exceeded_max_rows = 0;
+uint64_t avg_bytes = 0;
+uint64_t previous_total_bytes = 0;
 pthread_t key_event_thread;
+pthread_t stats_thread;
 const int PACKET_NUM_INDEX = 0;
 const int TIME_INDEX = 10;
 const int SOURCE_INDEX = 30;
@@ -93,7 +97,7 @@ const int PROTOCOL_INDEX = 90;
 const int LENGTH_INDEX = 105;
 const int STATS_X = 0;
 const int STATS_Y = 0;
-const int STATS_ROWS = 4;
+const int STATS_ROWS = 5;
 const int STATS_COLS = MAX_COLS;
 const int PAD_ROWS_TO_DISPLAY = 15;
 const int INFO_ROWS_TO_DISPLAY = 15;
@@ -681,32 +685,25 @@ void free_ts_bin_list() {
 
 void refresh_stats_window() {
   wrefresh(stats);
-  // mvwprintw(stats, 0, 0, "Packets: %d", total_pkts);
-  // mvwprintw(stats, 0, 20, "Bytes: %d", total_bytes);
-  // mvwprintw(stats, 0, 40, "IPv4: %d", total_ipv4_count);
-  // mvwprintw(stats, 0, 60, "ARP: %d", total_arp_count);
-  // mvwprintw(stats, 0, 80, "TCP: %d", total_tcp_count);
-  // mvwprintw(stats, 0, 100, "UDP: %d", total_udp_count);
-  // mvwprintw(stats, 1, 0, "ICMP: %d", total_icmp_count);
-  // mvwprintw(stats, 1, , "OTHER L4: %d", total_other_l4);
-  // mvwprintw(stats, 1, 100, "HTTP: %d", total_http_count);
-  mvwprintw(stats, 0, 0, "Packets");
-  mvwprintw(stats, 0, 12, "IPv4");
-  mvwprintw(stats, 0, 22, "ARP");
-  mvwprintw(stats, 0, 32, "TCP");
-  mvwprintw(stats, 0, 42, "UDP");
-  mvwprintw(stats, 0, 52, "ICMP");
-  mvwprintw(stats, 0, 62, "HTTP");
-  mvwprintw(stats, 0, 72, "Bytes");
-  mvwprintw(stats, 1, 0, "%d", total_pkts);
-  mvwprintw(stats, 1, 12, "%d", total_ipv4_count);
-  mvwprintw(stats, 1, 22, "%d", total_arp_count);
-  mvwprintw(stats, 1, 32, "%d", total_tcp_count);
-  mvwprintw(stats, 1, 42, "%d", total_udp_count);
-  mvwprintw(stats, 1, 52, "%d", total_icmp_count);
-  mvwprintw(stats, 1, 62, "%d", total_http_count);
-  mvwprintw(stats, 1, 72, "%d", total_bytes);
-  wmove(stats, 3, 0);
+  werase(stats);
+  mvwprintw(stats, 0, 0, "Average Bytes/second: %ld", avg_bytes);
+  mvwprintw(stats, 2, 0, "Packets");
+  mvwprintw(stats, 2, 12, "IPv4");
+  mvwprintw(stats, 2, 22, "ARP");
+  mvwprintw(stats, 2, 32, "TCP");
+  mvwprintw(stats, 2, 42, "UDP");
+  mvwprintw(stats, 2, 52, "ICMP");
+  mvwprintw(stats, 2, 62, "HTTP");
+  mvwprintw(stats, 2, 72, "Bytes");
+  mvwprintw(stats, 3, 0, "%d", total_pkts);
+  mvwprintw(stats, 3, 12, "%d", total_ipv4_count);
+  mvwprintw(stats, 3, 22, "%d", total_arp_count);
+  mvwprintw(stats, 3, 32, "%d", total_tcp_count);
+  mvwprintw(stats, 3, 42, "%d", total_udp_count);
+  mvwprintw(stats, 3, 52, "%d", total_icmp_count);
+  mvwprintw(stats, 3, 62, "%d", total_http_count);
+  mvwprintw(stats, 3, 72, "%d", total_bytes);
+  wmove(stats, 4, 0);
   whline(stats, '-', MAX_COLS);
   wrefresh(stats);
 }
@@ -768,6 +765,10 @@ void close_program() {
   // Exit key event thread
   pthread_cancel(key_event_thread);
   pthread_join(key_event_thread, NULL);
+
+  // Exit stats thread
+  pthread_cancel(stats_thread);
+  pthread_join(stats_thread, NULL);
 
   // Close ncurses window
   delete_windows();
@@ -1152,6 +1153,18 @@ void* handle_key_event(void* arg) {
   }
 }
 
+void* handle_stats_update(void* arg) {
+  int total_time = 0;
+  int time_interval = 3;
+  while (1) {
+    sleep(time_interval);
+    total_time++;
+    avg_bytes = (total_bytes - previous_total_bytes) / time_interval;
+    previous_total_bytes = total_bytes;
+    refresh_stats_window();
+  }
+}
+
 /* Handling Ctrl-C */
 void handle_signal(int signal) { close_program(); }
 
@@ -1242,6 +1255,9 @@ int main(int argc, char* argv[]) {
 
   // Start checking for key commands
   pthread_create(&key_event_thread, NULL, handle_key_event, NULL);
+
+  // Update average bytes stats
+  pthread_create(&stats_thread, NULL, handle_stats_update, NULL);
 
   // Setup windows
   initialize_windows();
