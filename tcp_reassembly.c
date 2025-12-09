@@ -222,25 +222,34 @@ tcp_segment_t* create_tcp_segment(uint32_t id, uint32_t seq, uint32_t len,
   return segment;
 }
 
+// Checks if seq num a is before seq num b
+// https://stackoverflow.com/questions/2061245/how-to-subtract-two-unsigned-ints-with-wrap-around-or-overflow
+int seq_num_less_than(uint32_t a, uint32_t b) { return (int32_t)(a - b) < 0; }
+
 void insert_tcp_segment(tcp_stream_t* stream, tcp_segment_t* new_segment) {
   // if the stream has no segments, add as first
   if (stream->segments == NULL) {
     stream->segments = new_segment;
+    stream->segments->next = NULL;
     return;
   }
 
   // insert segment in order based on sequence number
-  tcp_segment_t* current = stream->segments;
-  while (current != NULL && current->seq < new_segment->seq) {
-    if (current->next == NULL) {
-      current->next = new_segment;
-    } else if (current->next->seq > new_segment->seq) {
-      new_segment->next = current->next;
-      current->next = new_segment;
-    } else {
-      current = current->next;
-    }
+  if (seq_num_less_than(new_segment->seq, stream->segments->seq)) {
+    new_segment->next = stream->segments;
+    stream->segments = new_segment;
+    return;
   }
+
+  tcp_segment_t* curr = stream->segments;
+  while (curr->next != NULL &&
+         seq_num_less_than(curr->next->seq, new_segment->seq)) {
+    curr = curr->next;
+  }
+
+  // insert after curr
+  new_segment->next = curr->next;
+  curr->next = new_segment;
 }
 
 void destroy_tcp_stream(tcp_stream_t* stream) {
@@ -345,9 +354,12 @@ http_message_t* try_reassembling_http(tcp_stream_t* stream) {
 
   while (curr != NULL) {
     // check if we have the next segment in sequence
-    if (prev != NULL && curr->seq != prev->seq + prev->len) {
-      free(buf);
-      return NULL;
+    if (prev != NULL) {
+      uint32_t expected = prev->seq + prev->len;
+      if ((int32_t)(curr->seq - expected) != 0) {
+        free(buf);
+        return NULL;
+      }
     }
 
     segment_count++;
