@@ -594,48 +594,6 @@ static inline int is_arp(const uint8_t* pkt, uint32_t caplen) {
   return ethertype((uint8_t*)pkt) == ethertype_arp;
 }
 
-// check if http
-static int is_http(const uint8_t* pkt, uint32_t caplen) {
-  // should be ip
-  if (!is_ipv4(pkt, caplen)) return 0;
-
-  const ip_hdr_t* ip = (const ip_hdr_t*)(pkt + sizeof(ethernet_hdr_t));
-
-  // should be tcp
-  if (ip->ip_p != 6) return 0;
-
-  uint32_t ip_hdr_len = ip->ip_hl * 4;
-  uint32_t offset = sizeof(ethernet_hdr_t) + ip_hdr_len;
-
-  if (caplen < offset + sizeof(tcp_hdr_t)) return 0;
-
-  const tcp_hdr_t* tcp =
-      (const tcp_hdr_t*)(pkt + sizeof(ethernet_hdr_t) + ip_hdr_len);
-
-  uint16_t sport = ntohs(tcp->tcp_src);
-  uint16_t dport = ntohs(tcp->tcp_dst);
-
-  // check the ports
-  if (sport == 80 || dport == 80 || sport == 8080 || dport == 8080 ||
-      sport == 8000 || dport == 8000)
-    return 1;
-
-  // check methid
-  uint32_t tcp_hdr_len = tcp->tcp_off * 4;
-  uint32_t payload_offset = offset + tcp_hdr_len;
-  if (payload_offset >= caplen) return 0;
-
-  const char* pl = (const char*)(pkt + payload_offset);
-  uint32_t plen = caplen - payload_offset;
-
-  if (plen >= 3 && (!memcmp(pl, "GET", 3) || !memcmp(pl, "PUT", 3) ||
-                    !memcmp(pl, "POST", 4) || !memcmp(pl, "HEAD", 4) ||
-                    !memcmp(pl, "HTTP", 4)))
-    return 1;
-
-  return 0;
-}
-
 // make new bins
 static ts_bin_t* ts_make_bin_for_time(double t_rel) {
   if (!ts_head) {
@@ -658,7 +616,7 @@ static ts_bin_t* ts_make_bin_for_time(double t_rel) {
 }
 
 static void ts_update(double t_rel, const uint8_t* packet,
-                      const struct pcap_pkthdr* hdr) {
+                      const struct pcap_pkthdr* hdr, packet_node_t* packet_node) {
   pthread_mutex_lock(&ts_lock);
 
   ts_bin_t* bin = ts_make_bin_for_time(t_rel);
@@ -701,9 +659,11 @@ static void ts_update(double t_rel, const uint8_t* packet,
   }
 
   /* HTTP */
-  if (is_http(packet, hdr->len)) {
-    bin->http_count++;
-    total_http_count++;
+  if (packet_node != NULL) {
+    if(packet_node->proto == HTTP) {
+      bin->http_count++;
+      total_http_count++;
+    }
   }
 
   pthread_mutex_unlock(&ts_lock);
@@ -843,8 +803,6 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
   double t = (header->ts.tv_sec - first_ts.tv_sec) +
              (header->ts.tv_usec - first_ts.tv_usec) / 1e6;
 
-  ts_update(t, packet, header);
-
   // create and add to packet list
   pthread_mutex_lock(&packet_list_lock);
   packet_node_t* new_node = create_packet_node(packet, header, packet_count, t);
@@ -860,6 +818,9 @@ void handle_packet(uint8_t* args, const struct pcap_pkthdr* header,
     // mem fail
     return;
   }
+
+  // Update time series stats
+  ts_update(t, packet, header, new_node);
 
   if (!first_ts_set) {
     packet_list = new_node;
