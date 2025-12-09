@@ -28,6 +28,13 @@ Usage: ./packet_sniffer [-i [interface]] [-o <filename>] [-p <protocol>] [-t <du
   -h               View usage information
 ```
 
+## Test Cases
+
+tcp seq num wrap around
+```
+mininet> h1 tcpreplay --intf1=h1-eth0 pcap_samples/tcp_wraparound.pcap
+```
+
 ## Resources
 
 - <https://www.tcpdump.org/manpages/pcap_findalldevs.3pcap.html>
