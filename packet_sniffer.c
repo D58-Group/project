@@ -1269,6 +1269,10 @@ int main(int argc, char* argv[]) {
   getmaxyx(stdscr, terminal_y, terminal_x);
 
   if (terminal_x < MAX_COLS || terminal_y < INFO_PAD_Y + INFO_ROWS_TO_DISPLAY) {
+    // Close pcap capturing
+    if (packet_capture_handle != NULL) {
+      pcap_close(packet_capture_handle);
+    }
     endwin();
     printf(
         "Increase terminal size and run again in order to view packets "
