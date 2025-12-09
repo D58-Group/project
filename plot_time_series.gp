@@ -1,4 +1,4 @@
-set terminal size 640,480
+set terminal png size 640,480
 
 set output "packet_count_time_series.png"
 set xlabel "Time (seconds)"
