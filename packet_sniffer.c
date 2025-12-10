@@ -22,19 +22,15 @@
 
 struct options {
   char* interface;
-  char* filename;
   char* protocol;
-  int duration;
+  int list_interfaces;
 } typedef options_t;
 
 char* usage =
-    "Usage: "
-    "%s [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]\n"
-    "  -i [interface]   Interface to sniff on\n"
-    "                   If interface is omitted, lists available interfaces\n"
-    "  -o <filename>    File to save captured packets (default=stdout)\n"
+    "Usage: %s [-i <interface>] [-p <protocol>] [-l] [-h]\n"
+    "  -i <interface>   Interface to sniff on\n"
     "  -p <protocol>    Protocol to filter (default=any)\n"
-    "  -t <duration>    Duration to sniff in seconds (default=unlimited)\n"
+    "  -l               List available interfaces\n"
     "  -h               View usage information\n";
 
 typedef struct ts_bin {
@@ -285,26 +281,21 @@ options_t parse_options(int argc, char* argv[]) {
 
   options_t options;
   options.interface = NULL;
-  options.filename = NULL;
+  options.list_interfaces = 0;
   options.protocol = NULL;
-  options.duration = -1;
 
   for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "-i") == 0) {
-      if (i + 1 < argc) {
-        options.interface = argv[++i];
-      }
-    } else if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-      options.filename = argv[++i];
+    if (strcmp(argv[i], "-i") == 0 && i + 1 < argc) {
+      options.interface = argv[++i];
     } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
       options.protocol = argv[++i];
-    } else if (strcmp(argv[i], "-t") == 0 && i + 1 < argc) {
-      options.duration = atoi(argv[++i]);
+    } else if (strcmp(argv[i], "-l") == 0) {
+      options.list_interfaces = 1;
     } else if (strcmp(argv[i], "-h") == 0) {
       printf(usage, argv[0]);
       exit(0);
     } else {
-      printf("Invalid argument: %s\n", argv[i]);
+      printf("Invalid or missing arguments: %s\n", argv[i]);
       printf(usage, argv[0]);
       exit(1);
     }
@@ -624,7 +615,8 @@ static ts_bin_t* ts_make_bin_for_time(double t_rel) {
 }
 
 static void ts_update(double t_rel, const uint8_t* packet,
-                      const struct pcap_pkthdr* hdr, packet_node_t* packet_node) {
+                      const struct pcap_pkthdr* hdr,
+                      packet_node_t* packet_node) {
   pthread_mutex_lock(&ts_lock);
 
   ts_bin_t* bin = ts_make_bin_for_time(t_rel);
@@ -668,7 +660,7 @@ static void ts_update(double t_rel, const uint8_t* packet,
 
   /* HTTP */
   if (packet_node != NULL) {
-    if(packet_node->proto == HTTP) {
+    if (packet_node->proto == HTTP) {
       bin->http_count++;
       total_http_count++;
     }
@@ -680,7 +672,7 @@ static void ts_update(double t_rel, const uint8_t* packet,
 void free_ts_bin_list() {
   ts_bin_t* node = ts_head;
   ts_bin_t* next = NULL;
-  while(node != NULL) {
+  while (node != NULL) {
     next = node->next;
     free(node);
     node = next;
@@ -690,10 +682,12 @@ void free_ts_bin_list() {
 void store_time_series_data() {
   pthread_mutex_lock(&ts_lock);
 
-  ts_bin_t *bin = ts_head;
+  ts_bin_t* bin = ts_head;
 
   while (bin) {
-    fprintf(f, "%f %ld %ld %ld %ld %ld %ld %ld %ld\n", bin->start_time, bin->pkt_count, bin->byte_count, bin->ipv4_count, bin->arp_count, bin->tcp_count, bin->udp_count, bin->icmp_count, bin->http_count);
+    fprintf(f, "%f %ld %ld %ld %ld %ld %ld %ld %ld\n", bin->start_time,
+            bin->pkt_count, bin->byte_count, bin->ipv4_count, bin->arp_count,
+            bin->tcp_count, bin->udp_count, bin->icmp_count, bin->http_count);
     bin = bin->next;
   }
 
@@ -704,7 +698,8 @@ void refresh_stats_window() {
   wrefresh(stats);
   werase(stats);
   mvwprintw(stats, 0, 0, "Average Bytes/second: %ld", avg_bytes_overall);
-  mvwprintw(stats, 0, 50, "Bytes/second (in last 3 second interval): %ld", avg_bytes);
+  mvwprintw(stats, 0, 50, "Bytes/second (in last 3 second interval): %ld",
+            avg_bytes);
   mvwprintw(stats, 2, 0, "Packets");
   mvwprintw(stats, 2, 12, "IPv4");
   mvwprintw(stats, 2, 22, "ARP");
@@ -1230,10 +1225,10 @@ int main(int argc, char* argv[]) {
   }
 
   // Select device
-  if (options.interface == NULL) {
+  if (options.list_interfaces) {
     print_available_devices(devices);
     pcap_freealldevs(devices);
-    exit(1);
+    exit(0);
   } else {
     device = find_device_by_name(devices, options.interface);
     if (device == NULL) {
@@ -1306,7 +1301,8 @@ int main(int argc, char* argv[]) {
   pthread_create(&stats_thread, NULL, handle_stats_update, NULL);
 
   // Update average bytes stats
-  pthread_create(&overall_stats_thread, NULL, handle_overall_stats_update, NULL);
+  pthread_create(&overall_stats_thread, NULL, handle_overall_stats_update,
+                 NULL);
 
   // Setup windows
   initialize_windows();
