@@ -79,6 +79,7 @@ WINDOW* info_pad = NULL;
 WINDOW* win_key = NULL;
 WINDOW* stats = NULL;
 WINDOW* win_packet_num = NULL;
+FILE* f;
 int current_line = 0;
 int previous_line = -1;
 int top_line = 0;
@@ -686,6 +687,19 @@ void free_ts_bin_list() {
   }
 }
 
+void store_time_series_data() {
+  pthread_mutex_lock(&ts_lock);
+
+  ts_bin_t *bin = ts_head;
+
+  while (bin) {
+    fprintf(f, "%f %ld %ld %ld %ld %ld %ld %ld %ld\n", bin->start_time, bin->pkt_count, bin->byte_count, bin->ipv4_count, bin->arp_count, bin->tcp_count, bin->udp_count, bin->icmp_count, bin->http_count);
+    bin = bin->next;
+  }
+
+  pthread_mutex_unlock(&ts_lock);
+}
+
 void refresh_stats_window() {
   wrefresh(stats);
   werase(stats);
@@ -748,6 +762,11 @@ void delete_windows() {
 }
 
 void close_program() {
+  // Store time series data
+  store_time_series_data();
+  // Close file
+  fclose(f);
+
   // Free packet list
   if (packet_list != NULL) {
     delete_packet_nodes(packet_list);
@@ -1269,6 +1288,14 @@ int main(int argc, char* argv[]) {
     printf(
         "Increase terminal size and run again in order to view packets "
         "properly\n");
+    exit(0);
+  }
+
+  // Open file to write stats
+  f = fopen("stats.txt", "w");
+  if (f == NULL) {
+    endwin();
+    printf("Error creating file\n");
     exit(0);
   }
 
