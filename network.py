@@ -62,29 +62,11 @@ class BottleneckTopo(Topo):
             use_htb=True
         )
 
-
-#middlebox topology
-class MiddleboxTopo(Topo):
-    def build(self):
-        s1 = self.addSwitch('s1')
-        s2 = self.addSwitch('s2')
-
-        h1 = self.addHost('h1')
-        h2 = self.addHost('h2')
-        sn = self.addHost('sn')  
-
-        self.addLink(h1, s1)
-        self.addLink(s1, sn)
-        self.addLink(sn, s2)
-        self.addLink(s2, h2)
-
-
 topos = {
     'sniffer': SnifferTopo,
     'multihop': MultiHopTopo,
     'star': StarTopo,
     'bottleneck': BottleneckTopo,
-    'middlebox': MiddleboxTopo
 }
 
 
