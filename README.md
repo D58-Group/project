@@ -19,12 +19,10 @@ sudo ./packet_sniffer -h
 ## Options
 
 ```bash
-Usage: ./packet_sniffer [-i [interface]] [-o <filename>] [-p <protocol>] [-t <duration>] [-h]
-  -i [interface]   Interface to sniff on
-                   If interface is omitted, lists available interfaces
-  -o <filename>    File to save captured packets (default=stdout)
+Usage: ./packet_sniffer [-i <interface>] [-p <protocol>] [-l] [-h]
+  -i <interface>   Interface to sniff on
   -p <protocol>    Protocol to filter (default=any)
-  -t <duration>    Duration to sniff in seconds (default=unlimited)
+  -l               List available interfaces
   -h               View usage information
 ```
 
